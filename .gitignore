@@ -1,1 +1,4 @@
-bin/*.exe
+/bin/*.exe
+nimcache/
+nimblecache/
+htmldocs/
