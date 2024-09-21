@@ -27,4 +27,14 @@ type
     f1*,f2*:float32
     judge*:Judge
     lastHitFX*:int64
-  Judge* = enum jUnjudged,jPerfect,jGood,jBad,jMiss
+  Judge* = enum jUnjudged,jPerfect,jGood,jBad,jMiss,jHoldingPerfect,jHoldingGood
+  Touch* = object
+    time*:float32
+    x*:float32
+    y*:float32
+    noEarlyGood*:bool
+    parentClick*:ptr Touch
+converter toTouch*(t:tuple[time:float32,x:float32,y:float32,noEarlyGood:bool]):Touch=
+  Touch(time:t.time,x:t.x,y:t.y,noEarlyGood:t.noEarlyGood)
+converter toTouch*(t:tuple[time:float32,x:float32,y:float32,parentClick:ptr Touch]):Touch=
+  Touch(time:t.time,x:t.x,y:t.y,parentClick:t.parentClick)

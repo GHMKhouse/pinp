@@ -45,7 +45,7 @@ proc main=
     setEventFilter(
       proc(data: pointer, event: ptr sdl.Event): cint{.cdecl.} =
       if event.kind in {QUIT, MOUSEBUTTONDOWN, MOUSEBUTTONUP, MOUSEWHEEL,
-          MOUSEMOTION, 
+          MOUSEMOTION,FINGERDOWN,FINGERUP,FINGERMOTION,
           KEYDOWN, KEYUP, TEXTEDITING, TEXTINPUT}: 1 else: 0,
       nil
     )
@@ -154,6 +154,8 @@ proc main=
     let v=volumeMusic(-1)
     discard volumeMusic(int(v.toFloat))
     doSDL playMusic(music,1)
+    rewindMusic()
+    discard setMusicPosition(startTime.float64)
     var lt=getMonoTime().ticks()  # in nanoseconds!
     beginEpoch=lt.int
     var t=lt                    # terrible naming, waiting for fix
@@ -162,7 +164,7 @@ proc main=
     var ll=lt
     while true:
       t=getMonoTime().ticks()
-      time=(int(t-beginEpoch)/1_000_000_000+chart.offset)*speedScale
+      time=(int(t-beginEpoch)/1_000_000_000+chart.offset+startTime)*speedScale
       if t-lc>=1_000_000_000:
         fps10=int(10_000_000_000/int(t-ll))
         lc=t
@@ -170,6 +172,8 @@ proc main=
       # if t-lt<16000000:
       #   delay(uint32(16-((t-lt) shr 20)))
       #   lt=t
+      clicks.clear()
+      flicks.clear()
       var ev:Event
       if playing:
         while pollEvent(ev.addr)!=0:
@@ -198,25 +202,44 @@ proc main=
           c=cos(r)
           nc=cos(-r)
           f=readEvent(l.fe,time)
-        tex[Tex.line].setRGBA(237'u8,236'u8,176'u8, # remember to change it
-          max(a*255,minLineAlpha).toInt.uint8)      # after adding judgement
+        let
+          (cr,cg,cb)=(
+            if playResult[jBad]+playResult[jMiss]>0:(255'u8,255'u8,255'u8)
+            elif playResult[jGood]>0:(180,225,255)
+            else:(237'u8,236'u8,176'u8)
+            )
+        tex[Tex.line].setRGBA(cr,cg,cb,
+          max(a*255,minLineAlpha).toInt.uint8)
         tex[Tex.line].blitTransform(nil,target,
           (x*globalScale+0.5)*scrnWidth.toFloat,
           (0.5-y*globalScale)*scrnHeight.toFloat,h,
           2.0,2.0*globalScale)                      # width or height events?
         for n in l.n:
-          if n.t2<time-0.16:
+          if n.t2<time-0.16 and n.t2>time-0.5:
+            n.judge=jMiss
+            inc playResult[jMiss]
+            for i,jn in jNotes.pairs:
+              if cast[pointer](n)==cast[pointer](jn):
+                jNotes.delete(i)
+                break
             continue
           elif n.t2<=time and n.judge!=jUnjudged:continue
-
+          if n.kind==nkHold and n.t1<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
+            n.judge=jMiss
+            inc playResult[jMiss]
+            for i,jn in jNotes.pairs:
+              if cast[pointer](n)==cast[pointer](jn):
+                jNotes.delete(i)
+                break
           var
             side:float32=(if n.below: -1 else:1)
             w=n.x*scrnWidth.toFloat/3*globalScale
-            nx=w*nc+max(n.f1-f,0)*side*s*100*n.speed*globalScale
-            ny=w*ns+max(n.f1-f,0)*side*c*100*n.speed*globalScale
+            flr=(if n.kind==nkHold or n.t1>time:max(n.f1-f,0) else: n.f1-f)
+            nx=w*nc+flr*side*s*100*n.speed*globalScale
+            ny=w*ns+flr*side*c*100*n.speed*globalScale
           if (n.kind!=nkHold) and
             (nx>scrnWidth.float or ny>scrnHeight.float):continue
-          if n.t2<=time:
+          if autoPlay and n.t2<=time:
             n.judge=(                         # who can make auto-play miss?
               if abs(time-n.t1)<0.08:jPerfect
               elif abs(time-n.t1)<0.16:jGood
@@ -224,13 +247,17 @@ proc main=
               else:jMiss)
             doSDL:playChannel(channelQ,hitSounds[n.kind],0)
             channelQ=(channelQ+1) mod 64      # 64 channels!
-            inc combo
+            if n.judge!=jBad and n.judge!=jMiss:
+              inc combo
+            else:
+              combo=0
             hitFXs.add (time,
               float32((x*globalScale+0.5)*scrnWidth.toFloat+w*nc),
               float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
               n.judge
               )
-          elif n.kind==nkHold and n.t1<time:
+            inc playResult[n.judge]
+          elif n.kind==nkHold and autoPlay and n.t1<time:
             if n.judge==jUnjudged:
               n.judge=(                       # Warning: not DRY
                 if abs(time-n.t1)<0.08:jPerfect
@@ -239,7 +266,11 @@ proc main=
                 else:jMiss)
               doSDL:playChannel(channelQ,hitSounds[n.kind],0)
               channelQ=(channelQ+1) mod 64
-              inc combo
+              if n.judge!=jBad and n.judge!=jMiss:
+                inc combo
+              else:
+                combo=0
+              inc playResult[n.judge]
             let
               now=getMonoTime().ticks()
             if now-n.lastHitFX>100000000:
@@ -249,6 +280,8 @@ proc main=
                 n.judge
                 )
               n.lastHitFX=now
+          if not autoPlay and abs(time-n.t1)<0.245:
+            jNotes.add n
           #if n.t1>time+10:break
           if n.kind==nkHold:
             var u:float32
@@ -261,21 +294,40 @@ proc main=
             let
               nex=w*nc+u*side*s*100*globalScale
               ney=w*ns+u*side*c*100*globalScale
-            let head=tex[if n.hl:Tex.holdHeadHL else:Tex.holdHead]
-            head.blitTransform(nil,target,
-              nx+(x*globalScale+0.5)*scrnWidth.toFloat,
-              (0.5-y*globalScale)*scrnHeight.toFloat-ny,
-              h+90-side*90,0.2*globalScale,0.2*globalScale)
-            let body=tex[if n.hl:Tex.holdBodyHL else:Tex.holdBody]
-            body.blitTransform(nil,target,                     # what's this?
-              (x*globalScale+0.5)*scrnWidth.toFloat+nx+
-                head.h.float/12*sin(r)*side*globalScale,
-              (0.5-y*globalScale)*scrnHeight.toFloat-ny-
-                head.h.float/12*cos(r)*side*globalScale,
-              h+90-side*90,0.2*globalScale,
-              max(0,n.f2-n.f1-n.speed*max(0,time-n.t1)-0.1)*100/
-                body.h.int.toFloat*globalScale)
-            tex[(if n.hl:Tex.holdTailHL else:Tex.holdTail)].blitTransform(nil,
+            let
+              head=tex[if n.hl:Tex.holdHeadHL else:Tex.holdHead]
+              body=tex[if n.hl:Tex.holdBodyHL else:Tex.holdBody]
+              tail=tex[if n.hl:Tex.holdTailHL else:Tex.holdTail]
+            case n.judge
+            of jUnjudged:
+              body.setRGBA(255,255,255,255)
+              tail.setRGBA(255,255,255,255)
+              head.blitTransform(nil,target,
+                nx+(x*globalScale+0.5)*scrnWidth.toFloat,
+                (0.5-y*globalScale)*scrnHeight.toFloat-ny,
+                h+90-side*90,0.2*globalScale,0.2*globalScale)
+              body.blitTransform(nil,target,                     # what's this?
+                (x*globalScale+0.5)*scrnWidth.toFloat+nx+
+                  head.h.float/12*sin(r)*side*globalScale,
+                (0.5-y*globalScale)*scrnHeight.toFloat-ny-
+                  head.h.float/12*cos(r)*side*globalScale,
+                h+90-side*90,0.2*globalScale,
+                max(0,n.f2-n.f1-n.speed*max(0,time-n.t1)-0.1)*100/
+                  body.h.int.toFloat*globalScale)
+            else:
+              if n.judge==jMiss:
+                body.setRGBA(255,255,255,128)
+                tail.setRGBA(255,255,255,128)
+              else:
+                body.setRGBA(255,255,255,255)
+                tail.setRGBA(255,255,255,255)
+              body.blitTransform(nil,target,  
+                nx+(x*globalScale+0.5)*scrnWidth.toFloat,
+                (0.5-y*globalScale)*scrnHeight.toFloat-ny,
+                h+90-side*90,0.2*globalScale,
+                max(0,n.f2-n.f1-n.speed*max(0,time-n.t1))*100/
+                  body.h.int.toFloat*globalScale)
+            tail.blitTransform(nil,
               target,nex+(x*globalScale+0.5)*scrnWidth.toFloat,
               (0.5-y*globalScale)*scrnHeight.toFloat-ney,
               h+90-side*90,0.2*globalScale,0.2*globalScale)
@@ -286,10 +338,16 @@ proc main=
             of nkDrag:(if n.hl:Tex.dragHL else:Tex.drag)
             of nkFlick:(if n.hl:Tex.flickHL else:Tex.flick)
             else:Tex.holdHead
+            if time>n.t1:
+              tex[k].setRGBA(255,255,255,uint8(255*(1-min(1,(time-n.t1)*8))))
+            else:
+              tex[k].setRGBA(255,255,255,255)
             tex[k].blitTransform(nil,target,
               nx+(x*globalScale+0.5)*scrnWidth.toFloat,
               (0.5-y*globalScale)*scrnHeight.toFloat-ny,
               h+90-side*90,0.2*globalScale,0.2*globalScale)
+      for id,click in clicks.pairs:
+        discard # to be continued
       var
         dels:seq[int]
         deloffset:int=0
@@ -360,6 +418,8 @@ proc main=
         comboI.setAnchor(0.5,1.0)
         comboI.blitScale(nil,target,scrnWidth.toFloat/2,96,1.2,1.2)
         comboLI.blitScale(nil,target,scrnWidth.toFloat/2,96,0.4,0.4)
+      for id,touch in touchs.pairs:
+        target.circleFilled(touch.x,touch.y,10,makeColor(0,255,0,255))
       target.flip()
       
 when isMainModule:

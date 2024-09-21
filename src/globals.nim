@@ -1,3 +1,4 @@
+import std/[tables]
 import sdl2_nim/[sdl, sdl_ttf, sdl_gpu, sdl_mixer]
 import options,types
 var
@@ -21,3 +22,10 @@ var
   globalScale*:float32=getOption("PLAY","globalScale").intVal/1000
   minLineAlpha*:float32=getOption("PLAY","minLineAlpha").intVal.toFloat
   speedScale*:float32=getOption("PLAY","speedScale").intVal/1000
+  autoPlay*:bool=getOption("PLAY","autoPlay").intVal.bool
+  startTime*:float32=getOption("PLAY","startTime").intVal/1000
+  clicks*:Table[TouchID,Touch]
+  touchs*:Table[TouchID,Touch]
+  flicks*:Table[TouchID,Touch]
+  playResult*:array[Judge,int]
+  jNotes*:seq[Note]
