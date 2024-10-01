@@ -19,7 +19,7 @@ proc handleEvent*(event:Event)=
       ty=event.tfinger.y
       id=event.tfinger.touchId
 
-    clicks[id]=Touch(time:time,x:tx,y:ty,noEarlyGood:false)
+    clicks[id]=Touch(time:time,x:tx,y:ty,noEarly:false)
     touchs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
   of FINGERUP,MOUSEBUTTONUP:
     var
@@ -45,7 +45,7 @@ proc handleEvent*(event:Event)=
       dx=event.tfinger.dx
       dy=event.tfinger.dy
       id=event.tfinger.touchId
-    if dx+dy>32:
+    if dx*dx+dy*dy>1024:
       flicks[id]=Touch(time:time,x:tx,y:ty,parentClick:(if id in clicks:clicks[id].addr else:nil))
     if id!=MOUSE_TOUCHID:
       if id notin touchs:

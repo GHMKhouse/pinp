@@ -1,4 +1,6 @@
-/bin/*
+/bin/*.exe
+/bin/*.dll
 nimcache/
 nimblecache/
 htmldocs/
+.vscode/

@@ -17,4 +17,4 @@ when defined(useopencv):
   requires "opencv >= 0.1.0"
 
 task android,"":
-  exec "nimble build --opt:speed -d:release --app:gui --os:android --cpu:arm"
+  exec "nimble build --opt:speed -d:release --app:gui --cpu:arm --os:android -d:androidNDK --noMain:on"

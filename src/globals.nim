@@ -17,7 +17,7 @@ var
   playing*:bool
   beginEpoch*:int
   time*:float32=0.0
-  hitFXs*:seq[tuple[time:float32,x:float32,y:float32,j:Judge]]
+  hitFXs*:seq[tuple[time:float32,x:float32,y:float32,h:float32,j:Judge]]
   combo*:int
   globalScale*:float32=getOption("PLAY","globalScale").intVal/1000
   minLineAlpha*:float32=getOption("PLAY","minLineAlpha").intVal.toFloat

@@ -3,8 +3,7 @@
 ## This module is the entry of the program. It hasn't required any
 ## command-line arguments by now.
 
-import std/[math,monotimes,os,random,strutils]
-
+import std/[algorithm,math,monotimes,os,random,strutils]
 import sdl2_nim/[sdl, sdl_ttf, sdl_image, sdl_gpu, sdl_mixer]
 import iniplus
 when defined(useopencv): # Who has the dlls qwq
@@ -164,7 +163,7 @@ proc main=
     var ll=lt
     while true:
       t=getMonoTime().ticks()
-      time=(int(t-beginEpoch)/1_000_000_000+chart.offset+startTime)*speedScale
+      time=(int(t-beginEpoch)/1_000_000_000+chart.offset)*speedScale+startTime
       if t-lc>=1_000_000_000:
         fps10=int(10_000_000_000/int(t-ll))
         lc=t
@@ -175,7 +174,7 @@ proc main=
       clicks.clear()
       flicks.clear()
       var ev:Event
-      if playing:
+      if globals.playing:
         while pollEvent(ev.addr)!=0:
           handleEvent(ev)
       else:
@@ -190,6 +189,7 @@ proc main=
         scrnWidth/2,scrnHeight/2,
         scrnWidth.int/bg.w.int*globalScale,
         scrnHeight.int/bg.h.int*globalScale)
+      jNotes.setLen(0)
       for l in chart.lines:
         let
           x=readEvent(l.xe,time)
@@ -215,45 +215,43 @@ proc main=
           (0.5-y*globalScale)*scrnHeight.toFloat,h,
           2.0,2.0*globalScale)                      # width or height events?
         for n in l.n:
-          if n.t2<time-0.16 and n.t2>time-0.5:
+          if n.t2<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
             n.judge=jMiss
+            combo=0
             inc playResult[jMiss]
-            for i,jn in jNotes.pairs:
-              if cast[pointer](n)==cast[pointer](jn):
-                jNotes.delete(i)
-                break
             continue
-          elif n.t2<=time and n.judge!=jUnjudged:continue
+          elif n.t2<=time and n.judge in {jPerfect,jGood,jBad}:continue
           if n.kind==nkHold and n.t1<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
             n.judge=jMiss
+            combo=0
             inc playResult[jMiss]
-            for i,jn in jNotes.pairs:
-              if cast[pointer](n)==cast[pointer](jn):
-                jNotes.delete(i)
-                break
           var
             side:float32=(if n.below: -1 else:1)
             w=n.x*scrnWidth.toFloat/3*globalScale
             flr=(if n.kind==nkHold or n.t1>time:max(n.f1-f,0) else: n.f1-f)
             nx=w*nc+flr*side*s*100*n.speed*globalScale
             ny=w*ns+flr*side*c*100*n.speed*globalScale
+          n.nx=w*nc+(x*globalScale+0.5)*scrnWidth.toFloat
+          n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-w*ns
+          n.r=degToRad(h)
           if (n.kind!=nkHold) and
             (nx>scrnWidth.float or ny>scrnHeight.float):continue
           if autoPlay and n.t2<=time:
             n.judge=(                         # who can make auto-play miss?
               if abs(time-n.t1)<0.08:jPerfect
               elif abs(time-n.t1)<0.16:jGood
-              elif abs(time-n.t1)<0.245:jBad
+              elif abs(time-n.t1)<0.24:jBad
               else:jMiss)
-            doSDL:playChannel(channelQ,hitSounds[n.kind],0)
-            channelQ=(channelQ+1) mod 64      # 64 channels!
             if n.judge!=jBad and n.judge!=jMiss:
+              doSDL:playChannel(channelQ,hitSounds[n.kind],0)
+              channelQ=(channelQ+1) mod 64      # 64 channels!
               inc combo
             else:
               combo=0
             hitFXs.add (time,
               float32((x*globalScale+0.5)*scrnWidth.toFloat+w*nc),
               float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
+              radToDeg(n.r),
               n.judge
               )
             inc playResult[n.judge]
@@ -264,9 +262,9 @@ proc main=
                 elif abs(time-n.t1)<0.16:jGood
                 elif abs(time-n.t1)<0.245:jBad
                 else:jMiss)
-              doSDL:playChannel(channelQ,hitSounds[n.kind],0)
-              channelQ=(channelQ+1) mod 64
               if n.judge!=jBad and n.judge!=jMiss:
+                doSDL:playChannel(channelQ,hitSounds[n.kind],0)
+                channelQ=(channelQ+1) mod 64
                 inc combo
               else:
                 combo=0
@@ -277,10 +275,11 @@ proc main=
               hitFXs.add (time,
                 float32((x*globalScale+0.5)*scrnWidth.toFloat+w*nc),
                 float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
+                radToDeg(n.r),
                 n.judge
                 )
               n.lastHitFX=now
-          if not autoPlay and abs(time-n.t1)<0.245:
+          if (not autoPlay) and (n.judge notin {jPerfect,jGood,jBad,jMiss}) and n.t1-time<0.24 and (if n.kind==nkHold:time-n.t2<0.24 else:time-n.t1<0.16):
             jNotes.add n
           #if n.t1>time+10:break
           if n.kind==nkHold:
@@ -289,6 +288,8 @@ proc main=
               u=max(n.f1-f,0)+(n.f2-n.f1-n.speed*max(0,time-n.t1))
               nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale
               ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale
+              n.nx=nx+(x*globalScale+0.5)*scrnWidth.toFloat
+              n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
             else:
               u=(n.f2-f)*n.speed
             let
@@ -302,32 +303,32 @@ proc main=
             of jUnjudged:
               body.setRGBA(255,255,255,255)
               tail.setRGBA(255,255,255,255)
-              head.blitTransform(nil,target,
-                nx+(x*globalScale+0.5)*scrnWidth.toFloat,
-                (0.5-y*globalScale)*scrnHeight.toFloat-ny,
-                h+90-side*90,0.2*globalScale,0.2*globalScale)
+              if n.t1>time:
+                head.blitTransform(nil,target,
+                  n.nx,
+                  n.ny,
+                  h+90-side*90,0.2*globalScale,0.2*globalScale)
               body.blitTransform(nil,target,                     # what's this?
-                (x*globalScale+0.5)*scrnWidth.toFloat+nx+
-                  head.h.float/12*sin(r)*side*globalScale,
-                (0.5-y*globalScale)*scrnHeight.toFloat-ny-
-                  head.h.float/12*cos(r)*side*globalScale,
+                n.nx+head.h.float/12*sin(r)*side*globalScale,
+                n.ny-head.h.float/12*cos(r)*side*globalScale,
                 h+90-side*90,0.2*globalScale,
                 max(0,n.f2-n.f1-n.speed*max(0,time-n.t1)-0.1)*100/
                   body.h.int.toFloat*globalScale)
             else:
-              if n.judge==jMiss:
+              if n.judge==jMiss or n.judge==jBad:
                 body.setRGBA(255,255,255,128)
                 tail.setRGBA(255,255,255,128)
               else:
                 body.setRGBA(255,255,255,255)
                 tail.setRGBA(255,255,255,255)
               body.blitTransform(nil,target,  
-                nx+(x*globalScale+0.5)*scrnWidth.toFloat,
-                (0.5-y*globalScale)*scrnHeight.toFloat-ny,
+                n.nx,
+                n.ny,
                 h+90-side*90,0.2*globalScale,
                 max(0,n.f2-n.f1-n.speed*max(0,time-n.t1))*100/
                   body.h.int.toFloat*globalScale)
-            tail.blitTransform(nil,
+            if u>0:
+              tail.blitTransform(nil,
               target,nex+(x*globalScale+0.5)*scrnWidth.toFloat,
               (0.5-y*globalScale)*scrnHeight.toFloat-ney,
               h+90-side*90,0.2*globalScale,0.2*globalScale)
@@ -343,27 +344,224 @@ proc main=
             else:
               tex[k].setRGBA(255,255,255,255)
             tex[k].blitTransform(nil,target,
-              nx+(x*globalScale+0.5)*scrnWidth.toFloat,
+              (x*globalScale+0.5)*scrnWidth.toFloat+nx,
               (0.5-y*globalScale)*scrnHeight.toFloat-ny,
               h+90-side*90,0.2*globalScale,0.2*globalScale)
-      for id,click in clicks.pairs:
-        discard # to be continued
+            # if n.t2>time:
+            #   tex[k].setRGBA(0,255,0,128)
+            #   tex[k].blitTransform(nil,target,
+            #     n.nx,
+            #     n.ny,
+            #     n.r.radToDeg,0.2*globalScale,0.2*globalScale)
+      jNotes.sort((
+        proc(x,y:Note):int=
+          result=cmp(x.t1,y.t1)
+          if abs(result)<1:
+            result=cmp(nk2order[x.kind],nk2order[y.kind])
+        ),Ascending)
+      for id,click in clicks.mpairs:
+        var bestJudged:Note=nil
+        for n in jNotes:
+          if n.judge!=jUnjudged:continue
+          var judgedOn=false
+          if abs(n.r mod PI)<0.01:
+            judgedOn=abs(n.nx-click.x)<150
+          elif abs((n.r+PI/2) mod PI)<0.01:
+            judgedOn=abs(n.ny-click.y)<150
+          else:
+            let
+              t  = tan(n.r)
+              c  = cos(n.r)
+              s  = sin(n.r)
+              dx = click.x-n.nx
+              dy = n.ny-click.y
+              ux = (dx*c-dy*s)/(c+s*t)
+              uy = -t*ux
+            judgedOn=sqrt(ux*ux+uy*uy)<150
+          if judgedOn:
+            case n.kind
+            of nkFlick:
+              click.noEarly=true
+            of nkDrag:
+              if abs(time-n.t1)<0.16:
+                n.judge=jHoldingPerfect
+              click.noEarly=true
+            else:
+              if click.noEarly and time-n.t1>0.08:
+                click.noEarly=false
+                continue
+              let j=(if abs(time-n.t1)<0.08:jPerfect
+              elif abs(time-n.t1)<0.16:jGood
+              elif time>n.t1:jBad
+              else:jMiss)
+              if n.kind==nkHold and j==jBad:continue
+              if bestJudged.isNil:
+                bestJudged=n
+                n.judge=j
+              elif bestJudged.judge<j:
+                bestJudged.judge=jUnjudged
+                bestJudged=n
+                n.judge=j
+              if n.kind==nkHold:
+                if j==jPerfect:
+                  n.judge=jHoldingPerfect
+                else:
+                  n.judge=jHoldingGood
+                
+              if j==jPerfect or j==jHoldingPerfect:break
+              else:continue
+        if (not bestJudged.isNil):
+          case bestJudged.kind
+          of nkHold:
+            doSDL:playChannel(channelQ,hitSounds[bestJudged.kind],0)
+            channelQ=(channelQ+1) mod 64
+            hitFXs.add (time,
+              bestJudged.nx,
+              bestJudged.ny,
+              radToDeg(bestJudged.r),
+              bestJudged.judge
+              )
+            let now=getMonoTime().ticks()
+            bestJudged.lastHitFX=now
+            bestJudged.lastHold=now
+          else:
+            discard
+
+      for id,touch in touchs.mpairs:
+        for n in jNotes:
+          if n.judge in {jPerfect,jGood,jBad,jMiss}:continue
+          var judgedOn=false
+          if abs(n.r)<0.01:
+            judgedOn=abs(n.nx-touch.x)<150
+          elif abs((n.r+PI/2) mod PI)<0.01:
+            judgedOn=abs(n.ny-touch.y)<150
+          else:
+            let
+              t  = tan(n.r)
+              c  = cos(n.r)
+              s  = sin(n.r)
+              dx = touch.x-n.nx
+              dy = n.ny-touch.y
+              ux = (dx*c-dy*s)/(c+s*t)
+              uy = -t*ux
+            judgedOn=sqrt(ux*ux+uy*uy)<150
+          if judgedOn:
+            case n.kind
+            of nkDrag:
+              if abs(time-n.t1)<0.16:
+                n.judge=jHoldingPerfect
+            of nkHold:
+              if n.judge in {jHoldingPerfect,jHoldingGood}:
+                let
+                  now=getMonoTime().ticks()
+                n.lastHold=now
+                if now-n.lastHitFX>100000000:
+                  hitFXs.add (time,
+                    n.nx,
+                    n.ny,
+                    radToDeg(n.r),
+                    n.judge
+                    )
+                  n.lastHitFX=now
+            else:discard
+      for id,flick in flicks.mpairs:
+        for n in jNotes:
+          if n.judge!=jUnjudged or n.kind!=nkFlick:continue
+          var judgedOn=false
+          if abs(n.r)<0.01:
+            judgedOn=abs(n.nx-flick.x)<150
+          elif abs((n.r+PI/2) mod PI)<0.01:
+            judgedOn=abs(n.ny-flick.y)<150
+          else:
+            let
+              t  = tan(n.r)
+              c  = cos(n.r)
+              s  = sin(n.r)
+              dx = flick.x-n.nx
+              dy = n.ny-flick.y
+              ux = (dx*c-dy*s)/(c+s*t)
+              uy = -t*ux
+            judgedOn=sqrt(ux*ux+uy*uy)<150
+          if judgedOn:
+              if abs(time-n.t1)<0.16:
+                n.judge=jHoldingPerfect
+      for i in 0..<jNotes.len:
+        var n=jNotes[i]
+        case n.judge
+        of jPerfect,jGood:
+          doSDL:playChannel(channelQ,hitSounds[n.kind],0)
+          channelQ=(channelQ+1) mod 64
+          inc combo
+          hitFXs.add (time,
+            n.nx,
+            n.ny,
+            radToDeg(n.r),
+            n.judge
+            )
+          inc playResult[n.judge]
+        of jBad:
+          combo=0
+          inc playResult[n.judge]
+          hitFXs.add (time,
+            n.nx,
+            n.ny,
+            radToDeg(n.r),
+            n.judge
+            )
+        of jMiss:
+          combo=0
+          inc playResult[n.judge]
+        of jHoldingPerfect,jHoldingGood:
+          if n.kind==nkHold:
+            if time+0.24>n.t2:
+              n.judge=(if n.judge==jHoldingPerfect:jPerfect else:jGood)
+              inc combo
+              hitFXs.add (time,
+                n.nx,
+                n.ny,
+                radToDeg(n.r),
+                n.judge
+                )
+              inc playResult[n.judge]
+            let now=getMonoTime().ticks
+            if now-n.lastHold>200000000:
+              n.judge=jBad
+              combo=0
+              inc playResult[n.judge]
+          else:
+            if time>=n.t1:
+              n.judge=(if n.judge==jHoldingPerfect:jPerfect else:jGood)
+              doSDL:playChannel(channelQ,hitSounds[n.kind],0)
+              channelQ=(channelQ+1) mod 64
+              inc combo
+              hitFXs.add (time,
+                n.nx,
+                n.ny,
+                radToDeg(n.r),
+                n.judge
+                )
+              inc playResult[n.judge]
+        else:
+          discard
+
       var
         dels:seq[int]
         deloffset:int=0
       for i in 0..<hitFXs.len:
-        let (t,x,y,j)=hitFXs[i]
+        let (t,x,y,h,j)=hitFXs[i]
         if time-t>0.5 or j==jMiss:
           dels.add i
         elif j==jBad:
-          discard
+          tex[Tex.tap].setRGBA(255,0,0,uint8(192*(0.5-time+t)))
+          tex[Tex.tap].blitTransform(nil,target,
+            x,y,h,1.0*globalScale,1.0*globalScale)
         else:
           var rect=makeRect(
             cfloat(256*(int((time-t)*60) mod 6)),
             cfloat(256*(int((time-t)*60) div 6)),256,256)
           let (r,g,b)=case j
-          of jPerfect:(237'u8,236'u8,176'u8)
-          of jGood:(180,225,255)
+          of jPerfect,jHoldingPerfect:(237'u8,236'u8,176'u8)
+          of jGood,jHoldingGood:(180,225,255)
           else:(0,0,0)
           var rn=initRand(  # no need to create particle objects.
             int(256*t) or (int(x*256) shl 8) or
@@ -395,7 +593,7 @@ proc main=
       levelI.blitScale(nil,target,
         scrnWidth.toFloat-32,scrnHeight.toFloat-32,0.6,0.6)
       var scoreS=font64.renderText_Blended(
-        cstring(align($(int(combo/chart.numOfNotes*1000000)),7,'0')),
+        cstring(align($(int((playResult[jPerfect].float+playResult[jGood]/2)/chart.numOfNotes.float*1000000)),7,'0')),
         Color(r:255,g:255,b:255,a:255))
       defer:scoreS.freeSurface
       var scoreI=copyImageFromSurface(scoreS)
@@ -425,3 +623,4 @@ proc main=
 when isMainModule:
   setCurrentDir(getAppDir().parentDir())
   main()
+proc NimMain*() {.importc.}
