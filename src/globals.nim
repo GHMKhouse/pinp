@@ -4,8 +4,10 @@ import options,types
 var
   target*: Target
   window*: Window
-  scrnWidth*: int = 1600
-  scrnHeight*: int = 900
+  scrnWidth*: int = getOption("GENERAL","scrnWidth").intVal
+  playWidth*: int = int(getOption("GENERAL","scrnHeight").intVal*16/9)
+  scrnHeight*: int = getOption("GENERAL","scrnHeight").intVal
+  sizeFactor*: float32 = scrnHeight/900*getOption("PLAY","noteSize").intVal.float/1000
   maxWidth*, maxHeight*: cint
   font16*, font32*, font64*: Font
   music*:Music
@@ -24,6 +26,7 @@ var
   speedScale*:float32=getOption("PLAY","speedScale").intVal/1000
   autoPlay*:bool=getOption("PLAY","autoPlay").intVal.bool
   startTime*:float32=getOption("PLAY","startTime").intVal/1000
+  noteSize*:float32=getOption("PLAY","noteSize").intVal/1000
   clicks*:Table[TouchID,Touch]
   touchs*:Table[TouchID,Touch]
   flicks*:Table[TouchID,Touch]

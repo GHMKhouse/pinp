@@ -211,7 +211,7 @@ proc main=
         tex[Tex.line].setRGBA(cr,cg,cb,
           max(a*255,minLineAlpha).toInt.uint8)
         tex[Tex.line].blitTransform(nil,target,
-          (x*globalScale+0.5)*scrnWidth.toFloat,
+          (x*globalScale+0.5)*playWidth.toFloat,
           (0.5-y*globalScale)*scrnHeight.toFloat,h,
           2.0,2.0*globalScale)                      # width or height events?
         for n in l.n:
@@ -227,15 +227,15 @@ proc main=
             inc playResult[jMiss]
           var
             side:float32=(if n.below: -1 else:1)
-            w=n.x*scrnWidth.toFloat/3*globalScale
-            flr=(if n.kind==nkHold or n.t1>time:max(n.f1-f,0) else: n.f1-f)
+            w=n.x*playWidth.toFloat/3*globalScale
+            flr=(if n.kind==nkHold or n.t1>time:max(n.f1-f,0) else: n.f1-f)*sizeFactor/noteSize
             nx=w*nc+flr*side*s*100*n.speed*globalScale
             ny=w*ns+flr*side*c*100*n.speed*globalScale
-          n.nx=w*nc+(x*globalScale+0.5)*scrnWidth.toFloat
+          n.nx=w*nc+(x*globalScale+0.5)*playWidth.toFloat
           n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-w*ns
           n.r=degToRad(h)
           if (n.kind!=nkHold) and
-            (nx>scrnWidth.float or ny>scrnHeight.float):continue
+            (nx>playWidth.float or ny>scrnHeight.float):continue
           if autoPlay and n.t2<=time:
             n.judge=(                         # who can make auto-play miss?
               if abs(time-n.t1)<0.08:jPerfect
@@ -249,7 +249,7 @@ proc main=
             else:
               combo=0
             hitFXs.add (time,
-              float32((x*globalScale+0.5)*scrnWidth.toFloat+w*nc),
+              float32((x*globalScale+0.5)*playWidth.toFloat+w*nc),
               float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
               radToDeg(n.r),
               n.judge
@@ -273,7 +273,7 @@ proc main=
               now=getMonoTime().ticks()
             if now-n.lastHitFX>100000000:
               hitFXs.add (time,
-                float32((x*globalScale+0.5)*scrnWidth.toFloat+w*nc),
+                float32((x*globalScale+0.5)*playWidth.toFloat+w*nc),
                 float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
                 radToDeg(n.r),
                 n.judge
@@ -286,12 +286,13 @@ proc main=
             var u:float32
             if chart.constSpeed:      # const-speed holds
               u=max(n.f1-f,0)+(n.f2-n.f1-n.speed*max(0,time-n.t1))
-              nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale
-              ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale
-              n.nx=nx+(x*globalScale+0.5)*scrnWidth.toFloat
+              nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize
+              ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize
+              n.nx=nx+(x*globalScale+0.5)*playWidth.toFloat
               n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
             else:
               u=(n.f2-f)*n.speed
+            u*=sizeFactor/noteSize
             let
               nex=w*nc+u*side*s*100*globalScale
               ney=w*ns+u*side*c*100*globalScale
@@ -307,13 +308,13 @@ proc main=
                 head.blitTransform(nil,target,
                   n.nx,
                   n.ny,
-                  h+90-side*90,0.2*globalScale,0.2*globalScale)
+                  h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
               body.blitTransform(nil,target,                     # what's this?
-                n.nx+head.h.float/12*sin(r)*side*globalScale,
-                n.ny-head.h.float/12*cos(r)*side*globalScale,
-                h+90-side*90,0.2*globalScale,
+                n.nx+head.h.float/12*sin(r)*side*globalScale*sizeFactor,
+                n.ny-head.h.float/12*cos(r)*side*globalScale*sizeFactor,
+                h+90-side*90,0.2*globalScale*sizeFactor,
                 max(0,n.f2-n.f1-n.speed*max(0,time-n.t1)-0.1)*100/
-                  body.h.int.toFloat*globalScale)
+                  body.h.int.toFloat*globalScale*sizeFactor/noteSize)
             else:
               if n.judge==jMiss or n.judge==jBad:
                 body.setRGBA(255,255,255,128)
@@ -324,14 +325,14 @@ proc main=
               body.blitTransform(nil,target,  
                 n.nx,
                 n.ny,
-                h+90-side*90,0.2*globalScale,
+                h+90-side*90,0.2*globalScale*sizeFactor,
                 max(0,n.f2-n.f1-n.speed*max(0,time-n.t1))*100/
-                  body.h.int.toFloat*globalScale)
+                  body.h.int.toFloat*globalScale*sizeFactor/noteSize)
             if u>0:
               tail.blitTransform(nil,
-              target,nex+(x*globalScale+0.5)*scrnWidth.toFloat,
+              target,nex+(x*globalScale+0.5)*playWidth.toFloat,
               (0.5-y*globalScale)*scrnHeight.toFloat-ney,
-              h+90-side*90,0.2*globalScale,0.2*globalScale)
+              h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor/noteSize)
             discard
           else:
             let k=case n.kind
@@ -344,15 +345,15 @@ proc main=
             else:
               tex[k].setRGBA(255,255,255,255)
             tex[k].blitTransform(nil,target,
-              (x*globalScale+0.5)*scrnWidth.toFloat+nx,
+              (x*globalScale+0.5)*playWidth.toFloat+nx,
               (0.5-y*globalScale)*scrnHeight.toFloat-ny,
-              h+90-side*90,0.2*globalScale,0.2*globalScale)
+              h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
             # if n.t2>time:
             #   tex[k].setRGBA(0,255,0,128)
             #   tex[k].blitTransform(nil,target,
             #     n.nx,
             #     n.ny,
-            #     n.r.radToDeg,0.2*globalScale,0.2*globalScale)
+            #     n.r.radToDeg,0.2*globalScale*sizeFactor,0.2*globalScale)
       jNotes.sort((
         proc(x,y:Note):int=
           result=cmp(x.t1,y.t1)
@@ -584,14 +585,14 @@ proc main=
         inc deloffset
       tex[Tex.pause].blitScale(nil,target,32,32,1,1)
       target.rectangleFilled(0,0,
-        scrnWidth.toFloat*time/chart.songLength,8,
+        playWidth.toFloat*time/chart.songLength,8,
         makeColor(255,255,255,128))
-      target.rectangleFilled(scrnWidth.toFloat*time/chart.songLength-2,0,
-        scrnWidth.toFloat*time/chart.songLength+2,8,
+      target.rectangleFilled(playWidth.toFloat*time/chart.songLength-2,0,
+        playWidth.toFloat*time/chart.songLength+2,8,
         makeColor(255,255,255,255))
       songnameI.blitScale(nil,target,32,scrnHeight.toFloat-32,0.6,0.6)
       levelI.blitScale(nil,target,
-        scrnWidth.toFloat-32,scrnHeight.toFloat-32,0.6,0.6)
+        playWidth.toFloat-32,scrnHeight.toFloat-32,0.6,0.6)
       var scoreS=font64.renderText_Blended(
         cstring(align($(int((playResult[jPerfect].float+playResult[jGood]/2)/chart.numOfNotes.float*1000000)),7,'0')),
         Color(r:255,g:255,b:255,a:255))
@@ -599,7 +600,7 @@ proc main=
       var scoreI=copyImageFromSurface(scoreS)
       defer:scoreI.freeImage()
       scoreI.setAnchor(1.0,0.0)
-      scoreI.blitScale(nil,target,scrnWidth.toFloat-32,32,0.8,0.8)
+      scoreI.blitScale(nil,target,playWidth.toFloat-32,32,0.8,0.8)
       var fpsS=font64.renderText_Blended(
         cstring($(fps10/10)),Color(r:0,g:255,b:0,a:255))
       defer:fpsS.freeSurface
@@ -614,8 +615,8 @@ proc main=
         var comboI=copyImageFromSurface(comboS)
         defer:comboI.freeImage()
         comboI.setAnchor(0.5,1.0)
-        comboI.blitScale(nil,target,scrnWidth.toFloat/2,96,1.2,1.2)
-        comboLI.blitScale(nil,target,scrnWidth.toFloat/2,96,0.4,0.4)
+        comboI.blitScale(nil,target,playWidth.toFloat/2,96,1.2,1.2)
+        comboLI.blitScale(nil,target,playWidth.toFloat/2,96,0.4,0.4)
       for id,touch in touchs.pairs:
         target.circleFilled(touch.x,touch.y,10,makeColor(0,255,0,255))
       target.flip()
