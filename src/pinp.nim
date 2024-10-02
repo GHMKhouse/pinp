@@ -48,6 +48,7 @@ proc main=
           KEYDOWN, KEYUP, TEXTEDITING, TEXTINPUT}: 1 else: 0,
       nil
     )
+    stopTextInput()
     window.setWindowTitle("PINP".cstring)
   section initRes:
     font16 = openFont("rsc/font.ttf".cstring, 16) # not DRY, waiting for fix
@@ -361,7 +362,9 @@ proc main=
             result=cmp(nk2order[x.kind],nk2order[y.kind])
         ),Ascending)
       for id,click in clicks.mpairs:
-        var bestJudged:Note=nil
+        var
+          bestJudged:Note=nil
+          early:Note=nil
         for n in jNotes:
           if n.judge!=jUnjudged:continue
           var judgedOn=false
@@ -379,7 +382,7 @@ proc main=
               ux = (dx*c-dy*s)/(c+s*t)
               uy = -t*ux
             judgedOn=sqrt(ux*ux+uy*uy)<150
-          if judgedOn:
+          if judgedOn or click.x==(-1.0):
             case n.kind
             of nkFlick:
               click.noEarly=true
@@ -390,6 +393,7 @@ proc main=
             else:
               if click.noEarly and time-n.t1>0.08:
                 click.noEarly=false
+                early=n
                 continue
               let j=(if abs(time-n.t1)<0.08:jPerfect
               elif abs(time-n.t1)<0.16:jGood
@@ -411,6 +415,8 @@ proc main=
                 
               if j==jPerfect or j==jHoldingPerfect:break
               else:continue
+        if bestJudged.isNil:
+          bestJudged=early
         if (not bestJudged.isNil):
           case bestJudged.kind
           of nkHold:
@@ -446,7 +452,7 @@ proc main=
               ux = (dx*c-dy*s)/(c+s*t)
               uy = -t*ux
             judgedOn=sqrt(ux*ux+uy*uy)<150
-          if judgedOn:
+          if judgedOn or touch.x==(-1.0):
             case n.kind
             of nkDrag:
               if abs(time-n.t1)<0.16:
@@ -483,7 +489,7 @@ proc main=
               ux = (dx*c-dy*s)/(c+s*t)
               uy = -t*ux
             judgedOn=sqrt(ux*ux+uy*uy)<150
-          if judgedOn:
+          if judgedOn or flick.x==(-1.0):
               if abs(time-n.t1)<0.16:
                 n.judge=jHoldingPerfect
       for i in 0..<jNotes.len:

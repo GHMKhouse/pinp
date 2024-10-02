@@ -4,16 +4,25 @@ import globals,types
 proc handleEvent*(event:Event)=
   case event.kind
   of QUIT:quit(QuitSuccess)
-  of FINGERDOWN,MOUSEBUTTONDOWN:
+  of FINGERDOWN,MOUSEBUTTONDOWN,KEYDOWN:
     var
       tx,ty:cfloat
       id:TouchID
-    if event.kind==MOUSEBUTTONDOWN:
+    case event.kind
+    of MOUSEBUTTONDOWN:
       var x,y:cint
       discard getMouseState(x.addr,y.addr)
       tx=x.toFloat
       ty=y.toFloat
       id=MOUSE_TOUCHID
+    of KEYDOWN:
+      tx=(-1.0)
+      ty=(-1.0)
+      id=(event.key.keysym.scancode.int)
+      clicks[id]=Touch(time:time,x:tx,y:ty,noEarly:false)
+      touchs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
+      flicks[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
+      return
     else:
       tx=event.tfinger.x
       ty=event.tfinger.y
@@ -21,11 +30,14 @@ proc handleEvent*(event:Event)=
 
     clicks[id]=Touch(time:time,x:tx,y:ty,noEarly:false)
     touchs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
-  of FINGERUP,MOUSEBUTTONUP:
+  of FINGERUP,MOUSEBUTTONUP,KEYUP:
     var
       id:TouchID
-    if event.kind==MOUSEBUTTONUP:
+    case event.kind
+    of MOUSEBUTTONUP:
       id=MOUSE_TOUCHID
+    of KEYUP:
+      id=(event.key.keysym.scancode.int)
     else:
       id=event.tfinger.touchId
     touchs.del(id)
@@ -33,7 +45,8 @@ proc handleEvent*(event:Event)=
     var
       tx,ty,dx,dy:cfloat
       id:TouchID
-    if event.kind==MOUSEMOTION:
+    case event.kind
+    of MOUSEMOTION:
       tx=event.motion.x.toFloat
       ty=event.motion.y.toFloat
       dx=event.motion.xrel.toFloat
