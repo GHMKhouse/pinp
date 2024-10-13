@@ -1,4 +1,4 @@
-
+import json
 type
   Tex* {.pure.} = enum 
     line,tap,tapHL,drag,dragHL,flick,flickHL,
@@ -36,6 +36,12 @@ type
     y*:float32
     noEarly*:bool
     parentClick*:ptr Touch
+  TIter*[T:typedesc;U:typedesc[iterable[T]]] = ref object
+    i*:int
+    s*:U
+  Layers* = ref object
+    kind*:string
+    top*:JsonNode
 converter toTouch*(t:tuple[time:float32,x:float32,y:float32,noEarly:bool]):Touch=
   Touch(time:t.time,x:t.x,y:t.y,noEarly:t.noEarly)
 converter toTouch*(t:tuple[time:float32,x:float32,y:float32,parentClick:ptr Touch]):Touch=
@@ -45,3 +51,21 @@ var j2order*:array[Judge,int]=[0,3,2,1,1,3,2]
 
 proc `<`*(x,y:Judge):bool=
   j2order[x]<j2order[y]
+proc `[]`*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U],i:Natural):T=
+  l.s[i]
+proc len*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U],i:Natural):T=
+  l.s.len
+iterator items*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U]):T=
+  for i in l.i..<l.len:
+    yield l[i]
+iterator pairs*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U]):(int,T)=
+  for i in l.i..<l.len:
+    yield (i,l[i])
+proc toTIter*[T:typedesc;U:typedesc[iterable[T]]](l:U):TIter[T,U]=
+  new result
+  result.i=0
+  result.s=l
+proc toLayers*(t:JsonNode,k:string):Layers=
+  new result
+  result.top=t
+  result.kind=k

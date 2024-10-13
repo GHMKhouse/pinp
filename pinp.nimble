@@ -16,5 +16,7 @@ requires "iniplus >= 0.3.0"
 when defined(useopencv):
   requires "opencv >= 0.1.0"
 
-task android,"":
-  exec "nimble build --opt:speed -d:release --app:gui --cpu:arm --os:android -d:androidNDK --noMain:on"
+task android,"rm ./android":
+  if exists("androidgen"):
+    exec "rm androidgen"
+  exec "nimble build --opt:speed -d:release --cpu:arm --os:android -d:androidNDK --noMain:on -c --nimcache:$projectdir/../androidgen --verbose"

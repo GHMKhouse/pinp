@@ -9,7 +9,7 @@ import iniplus
 when defined(useopencv): # Who has the dlls qwq
   import opencv/[core,highgui,imgproc]
 
-import chartproc,events,globals,loadbin,offical2bin,tools,types
+import chartproc,events,globals,loadbin,offical2bin,options,rpe2bin,tools,types
 
 proc main=
   section initSDL: # `section` does nothing, but it's easier to read
@@ -84,7 +84,7 @@ proc main=
         except ValueError:
           continue
     let
-      song="sample321"
+      song="sampleAD"
       info=parseFile("rsc"/song/"info.ini")                     # Why .ini?
       illustInfo=info.getValue("META","illust").stringVal
       musicInfo=info.getValue("META","music").stringVal
@@ -109,15 +109,15 @@ proc main=
     bg.setRGB(128,128,128)
     music=loadMUS(cstring("rsc"/song/musicInfo))
   section readchart:
-    if not fileExists("rsc"/song/"rawChart.bin"):
+    if getOption("DEBUG","alwaysReload").intVal.bool or not fileExists("rsc"/song/"rawChart.bin"):
       var f=open("rsc"/song/chartInfo)
       defer:f.close()
-      var s:string=newString(64)
-      discard f.readChars(toOpenArray(s,0,63))
+      var s:string=newString(256)
+      discard f.readChars(toOpenArray(s,0,255))
       if "\"formatVersion\":3" in s:
         tranOffical("rsc"/song/chartInfo)
       elif "\"RPEVersion\"" in s:
-        discard
+        tranRPE("rsc"/song/chartInfo)
       else:
         raiseAssert("Unsupported format!")
     # benchmark:
@@ -232,8 +232,8 @@ proc main=
             flr=(if n.kind==nkHold or n.t1>time:max(n.f1-f,0) else: n.f1-f)*sizeFactor/noteSize
             nx=w*nc+flr*side*s*100*n.speed*globalScale
             ny=w*ns+flr*side*c*100*n.speed*globalScale
-          n.nx=w*nc+(x*globalScale+0.5)*playWidth.toFloat
-          n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-w*ns
+          n.nx=w*nc+(x*globalScale+0.5)*playWidth.toFloat+flr*side*s*100*n.speed*globalScale
+          n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-w*ns-flr*side*c*100*n.speed*globalScale
           n.r=degToRad(h)
           if (n.kind!=nkHold) and
             (nx>playWidth.float or ny>scrnHeight.float):continue
@@ -284,15 +284,18 @@ proc main=
             jNotes.add n
           #if n.t1>time+10:break
           if n.kind==nkHold:
-            var u:float32
+            var
+              u,v:float32
             if chart.constSpeed:      # const-speed holds
               u=max(n.f1-f,0)+(n.f2-n.f1-n.speed*max(0,time-n.t1))
+              v=n.f2-n.f1-n.speed*max(0,time-n.t1)
               nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize
               ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize
               n.nx=nx+(x*globalScale+0.5)*playWidth.toFloat
               n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
             else:
               u=(n.f2-f)*n.speed
+              v=n.f2-max(n.f1,f)
             u*=sizeFactor/noteSize
             let
               nex=w*nc+u*side*s*100*globalScale
@@ -314,7 +317,7 @@ proc main=
                 n.nx+head.h.float/12*sin(r)*side*globalScale*sizeFactor,
                 n.ny-head.h.float/12*cos(r)*side*globalScale*sizeFactor,
                 h+90-side*90,0.2*globalScale*sizeFactor,
-                max(0,n.f2-n.f1-n.speed*max(0,time-n.t1)-0.1)*100/
+                max(0,v-0.1)*100/
                   body.h.int.toFloat*globalScale*sizeFactor/noteSize)
             else:
               if n.judge==jMiss or n.judge==jBad:
@@ -327,7 +330,7 @@ proc main=
                 n.nx,
                 n.ny,
                 h+90-side*90,0.2*globalScale*sizeFactor,
-                max(0,n.f2-n.f1-n.speed*max(0,time-n.t1))*100/
+                max(0,v)*100/
                   body.h.int.toFloat*globalScale*sizeFactor/noteSize)
             if u>0:
               tail.blitTransform(nil,
@@ -345,10 +348,11 @@ proc main=
               tex[k].setRGBA(255,255,255,uint8(255*(1-min(1,(time-n.t1)*8))))
             else:
               tex[k].setRGBA(255,255,255,255)
-            tex[k].blitTransform(nil,target,
-              (x*globalScale+0.5)*playWidth.toFloat+nx,
-              (0.5-y*globalScale)*scrnHeight.toFloat-ny,
-              h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
+            if n.judge!=jBad:
+              tex[k].blitTransform(nil,target,
+                (x*globalScale+0.5)*playWidth.toFloat+nx,
+                (0.5-y*globalScale)*scrnHeight.toFloat-ny,
+                h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
             # if n.t2>time:
             #   tex[k].setRGBA(0,255,0,128)
             #   tex[k].blitTransform(nil,target,
@@ -397,7 +401,7 @@ proc main=
                 continue
               let j=(if abs(time-n.t1)<0.08:jPerfect
               elif abs(time-n.t1)<0.16:jGood
-              elif time>n.t1:jBad
+              elif time<n.t1:jBad
               else:jMiss)
               if n.kind==nkHold and j==jBad:continue
               if bestJudged.isNil:
@@ -561,7 +565,7 @@ proc main=
         elif j==jBad:
           tex[Tex.tap].setRGBA(255,0,0,uint8(192*(0.5-time+t)))
           tex[Tex.tap].blitTransform(nil,target,
-            x,y,h,1.0*globalScale,1.0*globalScale)
+            x,y,h,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
         else:
           var rect=makeRect(
             cfloat(256*(int((time-t)*60) mod 6)),

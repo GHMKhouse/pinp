@@ -16,12 +16,13 @@ proc handleEvent*(event:Event)=
       ty=y.toFloat
       id=MOUSE_TOUCHID
     of KEYDOWN:
-      tx=(-1.0)
-      ty=(-1.0)
-      id=(event.key.keysym.scancode.int)
-      clicks[id]=Touch(time:time,x:tx,y:ty,noEarly:false)
-      touchs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
-      flicks[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
+      if event.key.repeat==0:
+        tx=(-1.0)
+        ty=(-1.0)
+        id=(event.key.keysym.scancode.int)
+        clicks[id]=Touch(time:time,x:tx,y:ty,noEarly:false)
+        touchs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
+        flicks[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
       return
     else:
       tx=event.tfinger.x
