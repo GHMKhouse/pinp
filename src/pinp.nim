@@ -2,14 +2,16 @@
 ##        by InkOfSilicon(Olivana National Library)
 ## This module is the entry of the program. It hasn't required any
 ## command-line arguments by now.
+## It also deals with general rendering tasks.
 
-import std/[algorithm,math,monotimes,os,random,strutils]
+import std/[math,monotimes,options,os,strutils]
 import sdl2_nim/[sdl, sdl_ttf, sdl_image, sdl_gpu, sdl_mixer]
 import iniplus
 when defined(useopencv): # Who has the dlls qwq
   import opencv/[core,highgui,imgproc]
 
-import chartproc,events,globals,loadbin,offical2bin,options,rpe2bin,tools,types
+import chartproc,events,globals,hitfx,judge,loadbin,
+  noteproc,offical2bin,options,renderutils,rpe2bin,tools,types
 
 proc main=
   section initSDL: # `section` does nothing, but it's easier to read
@@ -50,6 +52,7 @@ proc main=
     )
     stopTextInput()
     window.setWindowTitle("PINP".cstring)
+    discard eventState(EventKind.SENSORUPDATE,IGNORE) # not a good idea
   section initRes:
     font16 = openFont("rsc/font.ttf".cstring, 16) # not DRY, waiting for fix
     font16.setFontKerning(0)
@@ -63,6 +66,15 @@ proc main=
     font32.setFontKerning(0)
     font32.setFontOutline(0)
     font32.setFontHinting(0)
+    hitSounds[nkFlick]=loadWAV("rsc/snd/HitSong2.ogg")
+    for kind, path in os.walkDir("rsc/gui/"):
+      if kind == pcFile:
+        let (_, n, x) = splitFile(path)
+        if x == ".png" or x == ".jpg":
+          gui[n]=loadImage(path.cstring)
+          case n
+          of "loadingbg_up","loadingbg_down":
+            gui[n].setAnchor(0.5,0.5)
     hitSounds[nkTap]=loadWAV("rsc/snd/HitSong0.ogg") # from lchzh3473
     hitSounds[nkHold]=hitSounds[nkTap]
     hitSounds[nkDrag]=loadWAV("rsc/snd/HitSong1.ogg")
@@ -84,13 +96,16 @@ proc main=
         except ValueError:
           continue
     let
-      song="sampleAD"
+      song=getOption("DEBUG","song").stringVal
       info=parseFile("rsc"/song/"info.ini")                     # Why .ini?
       illustInfo=info.getValue("META","illust").stringVal
       musicInfo=info.getValue("META","music").stringVal
       chartInfo=info.getValue("META","originalChart").stringVal
-      title=info.getValue("META","name").stringVal
-      level=info.getValue("META","level").stringVal
+      title=optional(info.getValue("META","name").stringVal).get("Untitled")
+      level=optional(info.getValue("META","level").stringVal).get("UK  Lv.0")
+      composer=optional(info.getValue("META","composer").stringVal).get("UK")
+      charter=optional(info.getValue("META","charter").stringVal).get("UK")
+      illustrator=optional(info.getValue("META","illustrator").stringVal).get("UK")
     when defined(useopencv):                                    # help
       if not fileExists("rsc"/song/"illustBlur.png"):
         var
@@ -108,6 +123,50 @@ proc main=
     bg.setAnchor(0.5,0.5)
     bg.setRGB(128,128,128)
     music=loadMUS(cstring("rsc"/song/musicInfo))
+  section prerender:
+    var
+      songname=newTextRenderingCache(title,white,0.0,1.0)
+      levelLabel=newTextRenderingCache(level,white,1.0,1.0)
+      comboLabel=newTextRenderingCache("PINP",white,0.5,0.0)
+      composerLabel=newTextRenderingCache("composer:"&composer,white,0.5,1.0)
+      charterLabel=newTextRenderingCache("charter:"&charter,white,0.5,1.0)
+      illustratorLabel=newTextRenderingCache("illustrator:"&illustrator,white,0.5,1.0)
+      scoreLabel=newTextRenderingCache("0000000",white,1.0,0.0)
+  var
+    loadingIntro=loadWAV("rsc/snd/loadintro.ogg")
+    loadingOutro=loadWAV("rsc/snd/loadoutro.ogg")
+  doSDL:playChannel(0,loadingIntro,0)
+  for i in 0..20:
+    target.clear()
+    bg.setRGBA(128,128,128,255)
+    bg.blitScale(nil,target,
+      scrnWidth/2,scrnHeight/2,
+      scrnWidth.int/bg.w.int*globalScale,
+      scrnHeight.int/bg.h.int*globalScale)
+    gui["loadingbg_up"].blitScale(nil,target,scrnWidth/2,scrnHeight/2*(i/20),scrnWidth.float32,scrnHeight.float32)
+    gui["loadingbg_down"].blitScale(nil,target,scrnWidth/2,scrnHeight/2*(2-i/20),scrnWidth.float32,scrnHeight.float32)
+    bg.setRGBA(255,255,255,uint8(12*i+15))
+    bg.blitScale(nil,target,
+      scrnWidth/2,scrnHeight/2,
+      scrnWidth.int/bg.w.int*globalScale/2,
+      scrnHeight.int/bg.h.int*globalScale/2)
+    tex[Tex.pause].setRGBA(255,255,255,uint8(12*i+15))
+    tex[Tex.pause].blitScale(nil,target,32,32,1,1)
+    songname.setRGBA(255,255,255,uint8(12*i+15))
+    songname.put(target,32,scrnHeight.toFloat-32,0.0,0.6,0.6)
+    levelLabel.setRGBA(255,255,255,uint8(12*i+15))
+    levelLabel.put(target,
+      playWidth.toFloat-32,scrnHeight.toFloat-32,0.0,0.6,0.6)
+    scoreLabel.setRGBA(255,255,255,uint8(12*i+15))
+    scoreLabel.put(target,playWidth.toFloat-32,32,0.0,0.8,0.8)
+    composerLabel.setRGBA(255,255,255,uint8(12*i+15))
+    composerLabel.put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-64,0.0,0.4,0.4)
+    charterLabel.setRGBA(255,255,255,uint8(12*i+15))
+    charterLabel.put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-96,0.0,0.4,0.4)
+    illustratorLabel.setRGBA(255,255,255,uint8(12*i+15))
+    illustratorLabel.put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-128,0.0,0.4,0.4)
+    target.flip()
+    delay(16)
   section readchart:
     if getOption("DEBUG","alwaysReload").intVal.bool or not fileExists("rsc"/song/"rawChart.bin"):
       var f=open("rsc"/song/chartInfo)
@@ -122,25 +181,33 @@ proc main=
         raiseAssert("Unsupported format!")
     # benchmark:
     chart=loadBin("rsc"/song/"rawChart.bin")  # used 18ms on my machine
-  section prerender:
-    var songnameS=font64.renderText_Blended(    # Warning: not DRY
-      cstring(title),Color(r:255,g:255,b:255,a:255))
-    defer:songnameS.freeSurface
-    var songnameI=copyImageFromSurface(songnameS)
-    defer:songnameI.freeImage()
-    songnameI.setAnchor(0.0,1.0)
-    var levelS=font64.renderText_Blended(
-      cstring(level),Color(r:255,g:255,b:255,a:255))
-    defer:levelS.freeSurface
-    var levelI=copyImageFromSurface(levelS)
-    defer:levelI.freeImage()
-    levelI.setAnchor(1.0,1.0)
-    var comboLS=font64.renderText_Blended("PINP",
-      Color(r:255,g:255,b:255,a:255))
-    defer:comboLS.freeSurface
-    var comboLI=copyImageFromSurface(comboLS)
-    defer:comboLI.freeImage()
-    comboLI.setAnchor(0.5,0.0)
+  var loadingDelay=getOption("DEBUG","loadingDelay").intVal
+  if loadingDelay==(-1):
+    while true:
+      var event:Event
+      doAssert waitEvent(event.addr)==1
+      if event.kind in {KEYDOWN,FINGERDOWN,MOUSEBUTTONDOWN}:
+        break
+  else:
+    delay(loadingDelay.uint32)
+  doSDL:playChannel(0,loadingOutro,0)
+  for i in 0..60:
+    target.clear()
+    bg.setRGBA(128,128,128,255)
+    bg.blitScale(nil,target,
+      scrnWidth/2,scrnHeight/2,
+      scrnWidth.int/bg.w.int*globalScale,
+      scrnHeight.int/bg.h.int*globalScale)
+    gui["loadingbg_up"].blitScale(nil,target,scrnWidth/2,scrnHeight/2*(1-i/60),scrnWidth.float32,scrnHeight.float32)
+    gui["loadingbg_down"].blitScale(nil,target,scrnWidth/2,scrnHeight/2*(1+i/60),scrnWidth.float32,scrnHeight.float32)
+    bg.setRGBA(255,255,255,uint8(255-4*i))
+    bg.blitScale(nil,target,
+      scrnWidth/2,scrnHeight/2,
+      scrnWidth.int/bg.w.int*globalScale/2,
+      scrnHeight.int/bg.h.int*globalScale/2)
+    target.flip()
+    delay(16)
+  bg.setRGBA(255,255,255,128)
   # delay 10000 # easier to open obs to record
   section mainLoop:
     globals.playing=true
@@ -165,6 +232,8 @@ proc main=
     while true:
       t=getMonoTime().ticks()
       time=(int(t-beginEpoch)/1_000_000_000+chart.offset)*speedScale+startTime
+      if time>chart.songLength+1.0:
+        break
       if t-lc>=1_000_000_000:
         fps10=int(10_000_000_000/int(t-ll))
         lc=t
@@ -216,421 +285,72 @@ proc main=
           (0.5-y*globalScale)*scrnHeight.toFloat,h,
           2.0,2.0*globalScale)                      # width or height events?
         for n in l.n:
-          if n.t2<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
-            n.judge=jMiss
-            combo=0
-            inc playResult[jMiss]
-            continue
-          elif n.t2<=time and n.judge in {jPerfect,jGood,jBad}:continue
-          if n.kind==nkHold and n.t1<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
-            n.judge=jMiss
-            combo=0
-            inc playResult[jMiss]
-          var
-            side:float32=(if n.below: -1 else:1)
-            w=n.x*playWidth.toFloat/3*globalScale
-            flr=(if n.kind==nkHold or n.t1>time:max(n.f1-f,0) else: n.f1-f)*sizeFactor/noteSize
-            nx=w*nc+flr*side*s*100*n.speed*globalScale
-            ny=w*ns+flr*side*c*100*n.speed*globalScale
-          n.nx=w*nc+(x*globalScale+0.5)*playWidth.toFloat+flr*side*s*100*n.speed*globalScale
-          n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-w*ns-flr*side*c*100*n.speed*globalScale
-          n.r=degToRad(h)
-          if (n.kind!=nkHold) and
-            (nx>playWidth.float or ny>scrnHeight.float):continue
-          if autoPlay and n.t2<=time:
-            n.judge=(                         # who can make auto-play miss?
-              if abs(time-n.t1)<0.08:jPerfect
-              elif abs(time-n.t1)<0.16:jGood
-              elif abs(time-n.t1)<0.24:jBad
-              else:jMiss)
-            if n.judge!=jBad and n.judge!=jMiss:
-              doSDL:playChannel(channelQ,hitSounds[n.kind],0)
-              channelQ=(channelQ+1) mod 64      # 64 channels!
-              inc combo
-            else:
-              combo=0
-            hitFXs.add (time,
-              float32((x*globalScale+0.5)*playWidth.toFloat+w*nc),
-              float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
-              radToDeg(n.r),
-              n.judge
-              )
-            inc playResult[n.judge]
-          elif n.kind==nkHold and autoPlay and n.t1<time:
-            if n.judge==jUnjudged:
-              n.judge=(                       # Warning: not DRY
-                if abs(time-n.t1)<0.08:jPerfect
-                elif abs(time-n.t1)<0.16:jGood
-                elif abs(time-n.t1)<0.245:jBad
-                else:jMiss)
-              if n.judge!=jBad and n.judge!=jMiss:
-                doSDL:playChannel(channelQ,hitSounds[n.kind],0)
-                channelQ=(channelQ+1) mod 64
-                inc combo
-              else:
-                combo=0
-              inc playResult[n.judge]
-            let
-              now=getMonoTime().ticks()
-            if now-n.lastHitFX>100000000:
-              hitFXs.add (time,
-                float32((x*globalScale+0.5)*playWidth.toFloat+w*nc),
-                float32((0.5-y*globalScale)*scrnHeight.toFloat-w*ns),
-                radToDeg(n.r),
-                n.judge
-                )
-              n.lastHitFX=now
-          if (not autoPlay) and (n.judge notin {jPerfect,jGood,jBad,jMiss}) and n.t1-time<0.24 and (if n.kind==nkHold:time-n.t2<0.24 else:time-n.t1<0.16):
-            jNotes.add n
-          #if n.t1>time+10:break
           if n.kind==nkHold:
-            var
-              u,v:float32
-            if chart.constSpeed:      # const-speed holds
-              u=max(n.f1-f,0)+(n.f2-n.f1-n.speed*max(0,time-n.t1))
-              v=n.f2-n.f1-n.speed*max(0,time-n.t1)
-              nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize
-              ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize
-              n.nx=nx+(x*globalScale+0.5)*playWidth.toFloat
-              n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
-            else:
-              u=(n.f2-f)*n.speed
-              v=n.f2-max(n.f1,f)
-            u*=sizeFactor/noteSize
-            let
-              nex=w*nc+u*side*s*100*globalScale
-              ney=w*ns+u*side*c*100*globalScale
-            let
-              head=tex[if n.hl:Tex.holdHeadHL else:Tex.holdHead]
-              body=tex[if n.hl:Tex.holdBodyHL else:Tex.holdBody]
-              tail=tex[if n.hl:Tex.holdTailHL else:Tex.holdTail]
-            case n.judge
-            of jUnjudged:
-              body.setRGBA(255,255,255,255)
-              tail.setRGBA(255,255,255,255)
-              if n.t1>time:
-                head.blitTransform(nil,target,
-                  n.nx,
-                  n.ny,
-                  h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
-              body.blitTransform(nil,target,                     # what's this?
-                n.nx+head.h.float/12*sin(r)*side*globalScale*sizeFactor,
-                n.ny-head.h.float/12*cos(r)*side*globalScale*sizeFactor,
-                h+90-side*90,0.2*globalScale*sizeFactor,
-                max(0,v-0.1)*100/
-                  body.h.int.toFloat*globalScale*sizeFactor/noteSize)
-            else:
-              if n.judge==jMiss or n.judge==jBad:
-                body.setRGBA(255,255,255,128)
-                tail.setRGBA(255,255,255,128)
-              else:
-                body.setRGBA(255,255,255,255)
-                tail.setRGBA(255,255,255,255)
-              body.blitTransform(nil,target,  
-                n.nx,
-                n.ny,
-                h+90-side*90,0.2*globalScale*sizeFactor,
-                max(0,v)*100/
-                  body.h.int.toFloat*globalScale*sizeFactor/noteSize)
-            if u>0:
-              tail.blitTransform(nil,
-              target,nex+(x*globalScale+0.5)*playWidth.toFloat,
-              (0.5-y*globalScale)*scrnHeight.toFloat-ney,
-              h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor/noteSize)
-            discard
-          else:
-            let k=case n.kind
-            of nkTap:(if n.hl:Tex.tapHL else:Tex.tap)
-            of nkDrag:(if n.hl:Tex.dragHL else:Tex.drag)
-            of nkFlick:(if n.hl:Tex.flickHL else:Tex.flick)
-            else:Tex.holdHead
-            if time>n.t1:
-              tex[k].setRGBA(255,255,255,uint8(255*(1-min(1,(time-n.t1)*8))))
-            else:
-              tex[k].setRGBA(255,255,255,255)
-            if n.judge!=jBad:
-              tex[k].blitTransform(nil,target,
-                (x*globalScale+0.5)*playWidth.toFloat+nx,
-                (0.5-y*globalScale)*scrnHeight.toFloat-ny,
-                h+90-side*90,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
-            # if n.t2>time:
-            #   tex[k].setRGBA(0,255,0,128)
-            #   tex[k].blitTransform(nil,target,
-            #     n.nx,
-            #     n.ny,
-            #     n.r.radToDeg,0.2*globalScale*sizeFactor,0.2*globalScale)
-      jNotes.sort((
-        proc(x,y:Note):int=
-          result=cmp(x.t1,y.t1)
-          if abs(result)<1:
-            result=cmp(nk2order[x.kind],nk2order[y.kind])
-        ),Ascending)
-      for id,click in clicks.mpairs:
-        var
-          bestJudged:Note=nil
-          early:Note=nil
-        for n in jNotes:
-          if n.judge!=jUnjudged:continue
-          var judgedOn=false
-          if abs(n.r mod PI)<0.01:
-            judgedOn=abs(n.nx-click.x)<150
-          elif abs((n.r+PI/2) mod PI)<0.01:
-            judgedOn=abs(n.ny-click.y)<150
-          else:
-            let
-              t  = tan(n.r)
-              c  = cos(n.r)
-              s  = sin(n.r)
-              dx = click.x-n.nx
-              dy = n.ny-click.y
-              ux = (dx*c-dy*s)/(c+s*t)
-              uy = -t*ux
-            judgedOn=sqrt(ux*ux+uy*uy)<150
-          if judgedOn or click.x==(-1.0):
-            case n.kind
-            of nkFlick:
-              click.noEarly=true
-            of nkDrag:
-              if abs(time-n.t1)<0.16:
-                n.judge=jHoldingPerfect
-              click.noEarly=true
-            else:
-              if click.noEarly and time-n.t1>0.08:
-                click.noEarly=false
-                early=n
-                continue
-              let j=(if abs(time-n.t1)<0.08:jPerfect
-              elif abs(time-n.t1)<0.16:jGood
-              elif time<n.t1:jBad
-              else:jMiss)
-              if n.kind==nkHold and j==jBad:continue
-              if bestJudged.isNil:
-                bestJudged=n
-                n.judge=j
-              elif bestJudged.judge<j:
-                bestJudged.judge=jUnjudged
-                bestJudged=n
-                n.judge=j
-              if n.kind==nkHold:
-                if j==jPerfect:
-                  n.judge=jHoldingPerfect
-                else:
-                  n.judge=jHoldingGood
-                
-              if j==jPerfect or j==jHoldingPerfect:break
-              else:continue
-        if bestJudged.isNil:
-          bestJudged=early
-        if (not bestJudged.isNil):
-          case bestJudged.kind
-          of nkHold:
-            doSDL:playChannel(channelQ,hitSounds[bestJudged.kind],0)
-            channelQ=(channelQ+1) mod 64
-            hitFXs.add (time,
-              bestJudged.nx,
-              bestJudged.ny,
-              radToDeg(bestJudged.r),
-              bestJudged.judge
-              )
-            let now=getMonoTime().ticks()
-            bestJudged.lastHitFX=now
-            bestJudged.lastHold=now
-          else:
-            discard
-
-      for id,touch in touchs.mpairs:
-        for n in jNotes:
-          if n.judge in {jPerfect,jGood,jBad,jMiss}:continue
-          var judgedOn=false
-          if abs(n.r)<0.01:
-            judgedOn=abs(n.nx-touch.x)<150
-          elif abs((n.r+PI/2) mod PI)<0.01:
-            judgedOn=abs(n.ny-touch.y)<150
-          else:
-            let
-              t  = tan(n.r)
-              c  = cos(n.r)
-              s  = sin(n.r)
-              dx = touch.x-n.nx
-              dy = n.ny-touch.y
-              ux = (dx*c-dy*s)/(c+s*t)
-              uy = -t*ux
-            judgedOn=sqrt(ux*ux+uy*uy)<150
-          if judgedOn or touch.x==(-1.0):
-            case n.kind
-            of nkDrag:
-              if abs(time-n.t1)<0.16:
-                n.judge=jHoldingPerfect
-            of nkHold:
-              if n.judge in {jHoldingPerfect,jHoldingGood}:
-                let
-                  now=getMonoTime().ticks()
-                n.lastHold=now
-                if now-n.lastHitFX>100000000:
-                  hitFXs.add (time,
-                    n.nx,
-                    n.ny,
-                    radToDeg(n.r),
-                    n.judge
-                    )
-                  n.lastHitFX=now
-            else:discard
-      for id,flick in flicks.mpairs:
-        for n in jNotes:
-          if n.judge!=jUnjudged or n.kind!=nkFlick:continue
-          var judgedOn=false
-          if abs(n.r)<0.01:
-            judgedOn=abs(n.nx-flick.x)<150
-          elif abs((n.r+PI/2) mod PI)<0.01:
-            judgedOn=abs(n.ny-flick.y)<150
-          else:
-            let
-              t  = tan(n.r)
-              c  = cos(n.r)
-              s  = sin(n.r)
-              dx = flick.x-n.nx
-              dy = n.ny-flick.y
-              ux = (dx*c-dy*s)/(c+s*t)
-              uy = -t*ux
-            judgedOn=sqrt(ux*ux+uy*uy)<150
-          if judgedOn or flick.x==(-1.0):
-              if abs(time-n.t1)<0.16:
-                n.judge=jHoldingPerfect
-      for i in 0..<jNotes.len:
-        var n=jNotes[i]
-        case n.judge
-        of jPerfect,jGood:
-          doSDL:playChannel(channelQ,hitSounds[n.kind],0)
-          channelQ=(channelQ+1) mod 64
-          inc combo
-          hitFXs.add (time,
-            n.nx,
-            n.ny,
-            radToDeg(n.r),
-            n.judge
-            )
-          inc playResult[n.judge]
-        of jBad:
-          combo=0
-          inc playResult[n.judge]
-          hitFXs.add (time,
-            n.nx,
-            n.ny,
-            radToDeg(n.r),
-            n.judge
-            )
-        of jMiss:
-          combo=0
-          inc playResult[n.judge]
-        of jHoldingPerfect,jHoldingGood:
-          if n.kind==nkHold:
-            if time+0.24>n.t2:
-              n.judge=(if n.judge==jHoldingPerfect:jPerfect else:jGood)
-              inc combo
-              hitFXs.add (time,
-                n.nx,
-                n.ny,
-                radToDeg(n.r),
-                n.judge
-                )
-              inc playResult[n.judge]
-            let now=getMonoTime().ticks
-            if now-n.lastHold>200000000:
-              n.judge=jBad
-              combo=0
-              inc playResult[n.judge]
-          else:
-            if time>=n.t1:
-              n.judge=(if n.judge==jHoldingPerfect:jPerfect else:jGood)
-              doSDL:playChannel(channelQ,hitSounds[n.kind],0)
-              channelQ=(channelQ+1) mod 64
-              inc combo
-              hitFXs.add (time,
-                n.nx,
-                n.ny,
-                radToDeg(n.r),
-                n.judge
-                )
-              inc playResult[n.judge]
-        else:
-          discard
-
-      var
-        dels:seq[int]
-        deloffset:int=0
-      for i in 0..<hitFXs.len:
-        let (t,x,y,h,j)=hitFXs[i]
-        if time-t>0.5 or j==jMiss:
-          dels.add i
-        elif j==jBad:
-          tex[Tex.tap].setRGBA(255,0,0,uint8(192*(0.5-time+t)))
-          tex[Tex.tap].blitTransform(nil,target,
-            x,y,h,0.2*globalScale*sizeFactor,0.2*globalScale*sizeFactor)
-        else:
-          var rect=makeRect(
-            cfloat(256*(int((time-t)*60) mod 6)),
-            cfloat(256*(int((time-t)*60) div 6)),256,256)
-          let (r,g,b)=case j
-          of jPerfect,jHoldingPerfect:(237'u8,236'u8,176'u8)
-          of jGood,jHoldingGood:(180,225,255)
-          else:(0,0,0)
-          var rn=initRand(  # no need to create particle objects.
-            int(256*t) or (int(x*256) shl 8) or
-            (int(y*256) shl 16) or (int(j) shl 24))
-          for i in 0..7:
-            let
-              px:float32=(sqrt(float32(rn.next() mod uint32.high))-
-                uint16.high.float/sqrt(3'f32))/128*sqrt(time-t)*globalScale
-              py:float32=(sqrt(float32(rn.next() mod uint32.high))-
-                uint16.high.float/sqrt(3'f32))/128*sqrt(time-t)*globalScale
-            target.rectangleFilled(
-              x+px-12*globalScale,y+py-12*globalScale,
-              x+px+12*globalScale,y+py+12*globalScale,
-              makeColor(r,g,b,uint8(255-255*sqrt(time-t))))
-          tex[Tex.hitFX].setRGB(r,g,b)
-          tex[Tex.hitFX].blitScale(rect.addr,target,
-            x,y,1.0*globalScale,1.0*globalScale)
-      for d in dels:
-        hitFXs.delete(d-deloffset)
-        inc deloffset
+            n.update((x,y,h,r,a,s,ns,c,nc,f))
+        for n in l.n:
+          if n.kind!=nkHold:
+            n.update((x,y,h,r,a,s,ns,c,nc,f))
+      judge()
+      renderHitFX()
+      
       tex[Tex.pause].blitScale(nil,target,32,32,1,1)
       target.rectangleFilled(0,0,
         playWidth.toFloat*time/chart.songLength,8,
         makeColor(255,255,255,128))
       target.rectangleFilled(playWidth.toFloat*time/chart.songLength-2,0,
         playWidth.toFloat*time/chart.songLength+2,8,
-        makeColor(255,255,255,255))
-      songnameI.blitScale(nil,target,32,scrnHeight.toFloat-32,0.6,0.6)
-      levelI.blitScale(nil,target,
-        playWidth.toFloat-32,scrnHeight.toFloat-32,0.6,0.6)
-      var scoreS=font64.renderText_Blended(
-        cstring(align($(int((playResult[jPerfect].float+playResult[jGood]/2)/chart.numOfNotes.float*1000000)),7,'0')),
-        Color(r:255,g:255,b:255,a:255))
-      defer:scoreS.freeSurface
-      var scoreI=copyImageFromSurface(scoreS)
-      defer:scoreI.freeImage()
-      scoreI.setAnchor(1.0,0.0)
-      scoreI.blitScale(nil,target,playWidth.toFloat-32,32,0.8,0.8)
-      var fpsS=font64.renderText_Blended(
-        cstring($(fps10/10)),Color(r:0,g:255,b:0,a:255))
-      defer:fpsS.freeSurface
-      var fpsI=copyImageFromSurface(fpsS)
-      defer:fpsI.freeImage()
-      fpsI.setAnchor(0.0,0.0)
-      fpsI.blitScale(nil,target,64,16,0.5,0.5)
+        white)
+      songname.put(target,32,scrnHeight.toFloat-32,0.0,0.6,0.6)
+      levelLabel.put(target,
+        playWidth.toFloat-32,scrnHeight.toFloat-32,0.0,0.6,0.6)
+      var score=newTextRenderingCache(align($(int((playResult[jPerfect].float+playResult[jGood]/2)/chart.numOfNotes.float*1000000)),7,'0'),
+        white,1.0,0.0)
+      score.put(target,playWidth.toFloat-32,32,0.0,0.8,0.8)
+      var fpsLabel=newTextRenderingCache($(fps10/10),Color(r:0,g:255,b:0,a:255),0.0,0.0)
+      fpsLabel.put(target,64,16,0.0,0.5,0.5)
       if combo>=3:
-        var comboS=font64.renderText_Blended(
-          cstring($(int(combo))),Color(r:255,g:255,b:255,a:255))
-        defer:comboS.freeSurface
-        var comboI=copyImageFromSurface(comboS)
-        defer:comboI.freeImage()
-        comboI.setAnchor(0.5,1.0)
-        comboI.blitScale(nil,target,playWidth.toFloat/2,96,1.2,1.2)
-        comboLI.blitScale(nil,target,playWidth.toFloat/2,96,0.4,0.4)
+        var comboNum=newTextRenderingCache($(int(combo)),white,0.5,1.0)
+        comboNum.put(target,playWidth.toFloat/2,96,0.0,1.2,1.2)
+        comboLabel.put(target,playWidth.toFloat/2,96,0.0,0.4,0.4)
       for id,touch in touchs.pairs:
         target.circleFilled(touch.x,touch.y,10,makeColor(0,255,0,255))
       target.flip()
-      
+  var score=newTextRenderingCache(
+    align($(int((playResult[jPerfect].float+playResult[jGood]/2)/chart.numOfNotes.float*1000000)),7,'0'),
+    white,1.0,0.0)
+  var
+    over=loadWAV("rsc/snd/over.ogg")
+  doSDL:playChannel(0,over,-1)
+  for i in 0..60:
+    target.clear()
+    bg.setRGBA(128,128,128,255)
+    bg.blitScale(nil,target,
+      scrnWidth/2,scrnHeight/2,
+      scrnWidth.int/bg.w.int*globalScale,
+      scrnHeight.int/bg.h.int*globalScale)
+    gui["loadingbg_up"].blitScale(nil,target,scrnWidth/2,scrnHeight/2*(i/60),scrnWidth.float32,scrnHeight.float32)
+    gui["loadingbg_down"].blitScale(nil,target,scrnWidth/2,scrnHeight/2*(2-i/60),scrnWidth.float32,scrnHeight.float32)
+    bg.setRGBA(255,255,255,uint8(4*i+15))
+    bg.blitScale(nil,target,
+      scrnWidth/2,scrnHeight/2,
+      scrnWidth.int/bg.w.int*globalScale/2,
+      scrnHeight.int/bg.h.int*globalScale/2)
+    tex[Tex.pause].setRGBA(255,255,255,uint8(4*i+15))
+    tex[Tex.pause].blitScale(nil,target,32,32,1,1)
+    songname.setRGBA(255,255,255,uint8(4*i+15))
+    songname.put(target,32,scrnHeight.toFloat-32,0.0,0.6,0.6)
+    levelLabel.setRGBA(255,255,255,uint8(4*i+15))
+    levelLabel.put(target,
+      playWidth.toFloat-32,scrnHeight.toFloat-32,0.0,0.6,0.6)
+    score.setRGBA(255,255,255,uint8(4*i+15))
+    score.put(target,playWidth.toFloat-32,32,0.0,0.8,0.8)
+    target.flip()
+    delay(16)
+  while true:
+    var event:Event
+    doAssert waitEvent(event.addr)==1
+    if event.kind in {KEYDOWN,FINGERDOWN,MOUSEBUTTONDOWN}:
+      break
 when isMainModule:
   setCurrentDir(getAppDir().parentDir())
   main()

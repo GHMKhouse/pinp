@@ -1,5 +1,5 @@
 
-import std/[macros,monotimes]
+import std/[macros,monotimes,options]
 import sdl2_nim/[sdl,sdl_gpu]
 
 macro doSDL*(x: cint) =
@@ -15,3 +15,8 @@ template benchmark*(x:untyped)=
   x
   echo getMonoTime().ticks()-st
 proc `/`*(x:SomeInteger,y:SomeInteger):auto=int(x)/int(y)
+template optional*[T](x:T):Option[T]=
+  try:
+    some(x)
+  except CatchableError:
+    none(T)

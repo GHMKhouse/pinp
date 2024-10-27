@@ -1,6 +1,7 @@
 when true:                    # not finished
   import std/[json,os,tables,streams]
-  import easings,types
+  import easings,tools,types
+  const dt=0.008
   template time2B(x:JsonNode):float=
     x[0].num.float+x[1].num/x[2].num
   iterator iterSlice[T](x:seq[T],s:Slice[int]): T=
@@ -48,7 +49,9 @@ when true:                    # not finished
     result=0.0
     for layer in layers.top.getElems:
       if layers.kind in layer:
-        for i,e in layer[layers.kind].getElems.pairs:
+        for i in layer[layers.kind&"I"].getInt..<layer[layers.kind].len:
+          layer[layers.kind&"I"]=newJInt(i)
+          let e=layer[layers.kind][i]
           let
             t1=e["startTimeS"].getFloat
             t2=e["endTimeS"].getFloat
@@ -69,12 +72,14 @@ when true:                    # not finished
     var
       lt:float32=(l["eventLayers"][0][kind][0]["startTimeS"].getFloat)
       lv:float32=calc(l["eventLayers"].toLayers(kind),lt)
+    l["eventLayers"][0][kind&"I"]=newJInt(0)
     yield (-99999.99'f32,lt,lv,lv)
     if l["father"].getInt==(-1):
-      for t in xrange(0,j["songLength"].getFloat,0.008):
-        var v:float32=calc(l["eventLayers"].toLayers(kind),t)
+      for t in xrange(0,j["songLength"].getFloat,dt):
+        var
+          v=calc(l["eventLayers"].toLayers(kind),t)
         if abs(v-lv)>0.000001:
-          yield (lt,t,lv,v)
+          yield (lt,t,v,v)
         lt=t
         lv=v
   proc tran*(j:JsonNode,s:var FileStream)=
@@ -119,9 +124,9 @@ when true:                    # not finished
       template addFloorEvent(t1,t2,f1,f2:float32)=
         s.write t1
         s.write t2
-        s.write f1
-        s.write f2
-        floorEvents.add (t1,t2,f1,f2)
+        s.write f1*1.2'f32
+        s.write f2*1.2'f32
+        floorEvents.add (t1,t2,f1*1.2'f32,f2*1.2'f32)
       for e in l["eventLayers"][0]["speedEvents"]:
         let lf=floor
         floor+=(e["startTimeS"].getFloat-lt)*ls
@@ -136,12 +141,12 @@ when true:                    # not finished
           lt=t2
           ls=e["end"].getFloat
         else:
-          for t in xrange(e["startTimeS"].getFloat,e["endTimeS"].getFloat-0.008,0.008):
+          for t in xrange(e["startTimeS"].getFloat,e["endTimeS"].getFloat-dt,dt):
             let
               t1=t
-              t2=t+0.008
+              t2=t+dt
               f1=float32(floor)
-            floor+=0.008*(e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t-e["endTimeS"].getFloat)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat))
+            floor+=dt*(e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t+dt/2-e["startTimeS"].getFloat)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat))
             addFloorEvent(t1,t2.float32,f1,floor.float32)
           lt=e["endTimeS"].getFloat
           ls=e["end"].getFloat
@@ -166,12 +171,16 @@ when true:                    # not finished
       s.write uint32.high
   proc doublize(j:JsonNode)=
     var c:CountTable[float]
-    for l in j["judgeLineList"]:
-      for la in l["eventLayers"]:
+    for i,l in j["judgeLineList"].getElems.pairs:
+      for m,la in l["eventLayers"].getElems.pairs:
+        var ks:seq[string]
         for k,es in la.pairs:
+          ks.add k
           for e in es:
             e["startTimeS"]=newJFloat(B2S(e["startTime"].time2B(),j["BPMList"].getElems()))
             e["endTimeS"]=newJFloat(B2S(e["endTime"].time2B(),j["BPMList"].getElems()))
+        for k in ks:
+          la[k&"I"]=newJInt(0)
       if "notes" in l:
         for e in l["notes"]:
           e["startTimeS"]=newJFloat(B2S(e["startTime"].time2B(),j["BPMList"].getElems()))

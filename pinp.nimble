@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "0.1.1"
 author        = "Olivana National Library"
 description   = "Pinp Is Not Phigros"
 license       = "MIT"
@@ -19,4 +19,5 @@ when defined(useopencv):
 task android,"rm ./android":
   if exists("androidgen"):
     exec "rm androidgen"
-  exec "nimble build --opt:speed -d:release --cpu:arm --os:android -d:androidNDK --noMain:on -c --nimcache:$projectdir/../androidgen --verbose"
+  exec "nimble build --opt:speed -d:release -c --cpu:arm --os:android -d:androidNDK --noMain:on --nimcache:$projectdir/../androidgen --verbose"
+  exec "nim c -r scripts/buildAndroidO.nim -o bin/buildAndroidO.exe"

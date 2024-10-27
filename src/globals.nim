@@ -32,3 +32,4 @@ var
   flicks*:Table[TouchID,Touch]
   playResult*:array[Judge,int]
   jNotes*:seq[Note]
+  gui*:Table[string,Image]
