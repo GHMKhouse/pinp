@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.1"
+version       = "0.1.2"
 author        = "Olivana National Library"
 description   = "Pinp Is Not Phigros"
 license       = "MIT"
