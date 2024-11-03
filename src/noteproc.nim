@@ -105,8 +105,8 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
     if chart.constSpeed:      # const-speed holds
       u=max(n.f1-f,0)+(n.f2-n.f1-n.speed*max(0,time-n.t1))
       v=n.f2-n.f1-n.speed*max(0,time-n.t1)
-      nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize
-      ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize
+      nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize*(if n.judge==jUnjudged:1 else:0)
+      ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize*(if n.judge==jUnjudged:1 else:0)
       n.nx=nx+(x*globalScale+0.5)*playWidth.toFloat
       n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
     else:

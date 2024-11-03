@@ -1,6 +1,7 @@
 import std/[tables]
-import sdl2_nim/[sdl, sdl_ttf, sdl_gpu, sdl_mixer]
+import sdl2_nim/[sdl, sdl_gpu, sdl_mixer]
 import options,types
+import iniplus
 var
   target*: Target
   window*: Window
@@ -9,7 +10,6 @@ var
   scrnHeight*: int = getOption("GENERAL","scrnHeight").intVal
   sizeFactor*: float32 = scrnHeight/900*getOption("PLAY","noteSize").intVal.float/1000
   maxWidth*, maxHeight*: cint
-  font16*, font32*, font64*: Font
   music*:Music
   hitSounds*:array[NoteKind,Chunk]
   channelQ*:int
@@ -27,9 +27,24 @@ var
   autoPlay*:bool=getOption("PLAY","autoPlay").intVal.bool
   startTime*:float32=getOption("PLAY","startTime").intVal/1000
   noteSize*:float32=getOption("PLAY","noteSize").intVal/1000
+  maxFPS*:int=getOption("PLAY","maxFPS").intVal
+  loadingDelay*:int=getOption("DEBUG","loadingDelay").intVal
   clicks*:Table[TouchID,Touch]
   touchs*:Table[TouchID,Touch]
   flicks*:Table[TouchID,Touch]
   playResult*:array[Judge,int]
   jNotes*:seq[Note]
   gui*:Table[string,Image]
+  trcs*:Table[string,TextRenderingCache]
+  snds*:Table[string,Chunk]
+  maps*:seq[MenuMap]
+  crtMap*:MenuMap
+  info*:ConfigTable
+  illustInfo*:string
+  musicInfo*:string
+  chartInfo*:string
+  title*:string
+  level*:string
+  composer*:string
+  charter*:string
+  illustrator*:string

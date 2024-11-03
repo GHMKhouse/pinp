@@ -1,5 +1,13 @@
-import json
+import json,oids
+import sdl2_nim/[sdl,sdl_ttf,sdl_gpu]
+var
+  font16*, font32*, font64*: Font
+const
+  white* = Color(r:255,g:255,b:255,a:255)
 type
+  TIter*[T] = ref object
+    i*:int
+    s*:seq[T]
   Tex* {.pure.} = enum 
     line,tap,tapHL,drag,dragHL,flick,flickHL,
     holdBody,holdBodyHL,holdTail,holdTailHL,holdHead,holdHeadHL,pause,hitFX
@@ -10,7 +18,7 @@ type
     numOfNotes*:int
     songLength*:float32
   JLine* = ref object
-    xe*,ye*,re*,ae*,fe*:seq[LEvent]
+    xe*,ye*,re*,ae*,fe*:TIter[LEvent]
     n*:seq[Note]
   LEvent* = object
     t1*,t2*:float32   # in seconds
@@ -36,32 +44,56 @@ type
     y*:float32
     noEarly*:bool
     parentClick*:ptr Touch
-  TIter*[T:typedesc;U:typedesc[iterable[T]]] = ref object
-    i*:int
-    s*:U
   Layers* = ref object
     kind*:string
     top*:JsonNode
+  TextRenderingCacheObj* = object
+    str*:cstring
+    surf*:Surface
+    img*:Image
+  TextRenderingCache* = ref TextRenderingCacheObj
+  MenuMap* = ref object
+    id*:Oid
+    title*,level*,composer*,charter*,illustrator*,path*:string
+    ttitle*,tlevel*,tcomposer*,tcharter*,tillustrator*:TextRenderingCache
+  MainReturn* = enum
+    mrQuit
+    mrRestart
+    mrEnd
+proc `=destroy`*(trc:TextRenderingCacheObj)=
+  if not trc.img.isNil:
+    freeImage(trc.img)
+  if not trc.surf.isNil:
+    freeSurface(trc.surf)
+proc newTextRenderingCache*(str:string,color:Color,anchorX:float32,anchorY:float32):TextRenderingCache=
+  new result
+  result.str=cstring(str)
+  result.surf=font64.renderUTF8_Blended(result.str,color)
+  result.img=copyImageFromSurface(result.surf)
+  result.img.setAnchor(anchorX,anchorY)
 converter toTouch*(t:tuple[time:float32,x:float32,y:float32,noEarly:bool]):Touch=
   Touch(time:t.time,x:t.x,y:t.y,noEarly:t.noEarly)
 converter toTouch*(t:tuple[time:float32,x:float32,y:float32,parentClick:ptr Touch]):Touch=
   Touch(time:t.time,x:t.x,y:t.y,parentClick:t.parentClick)
 var nk2order*:array[NoteKind,int]=[0,2,1,3]
 var j2order*:array[Judge,int]=[0,3,2,1,1,3,2]
-
 proc `<`*(x,y:Judge):bool=
   j2order[x]<j2order[y]
-proc `[]`*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U],i:Natural):T=
+proc `[]`*[T](l:TIter[T],i:Natural):T=
   l.s[i]
-proc len*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U],i:Natural):T=
+proc len*[T](l:TIter[T]):int=
   l.s.len
-iterator items*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U]):T=
+proc `[]=`*[T](l:TIter[T],i:Natural,v:T)=
+  l.s[i]=v
+proc add*[T](l:TIter[T],v:T)=
+  l.s.add v
+iterator items*[T](l:TIter[T]):T=
   for i in l.i..<l.len:
     yield l[i]
-iterator pairs*[T:typedesc;U:typedesc[iterable[T]]](l:TIter[T,U]):(int,T)=
+iterator pairs*[T](l:TIter[T]):(int,T)=
   for i in l.i..<l.len:
     yield (i,l[i])
-proc toTIter*[T:typedesc;U:typedesc[iterable[T]]](l:U):TIter[T,U]=
+proc toTIter*[T](l:seq[T]):TIter[T]=
   new result
   result.i=0
   result.s=l
@@ -69,3 +101,17 @@ proc toLayers*(t:JsonNode,k:string):Layers=
   new result
   result.top=t
   result.kind=k
+proc newMenuMap*(id:Oid;title,level,composer,charter,illustrator,path:string):MenuMap=
+  new result
+  result.id=id
+  result.title=title
+  result.ttitle=newTextRenderingCache(title,white,0.0,0.0)
+  result.level=level
+  result.tlevel=newTextRenderingCache(level,white,0.0,0.0)
+  result.composer=composer
+  result.tcomposer=newTextRenderingCache(composer,white,0.0,0.0)
+  result.charter=charter
+  result.tcharter=newTextRenderingCache(charter,white,0.0,0.0)
+  result.illustrator=illustrator
+  result.tillustrator=newTextRenderingCache(illustrator,white,0.0,0.0)
+  result.path=path

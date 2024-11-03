@@ -1,5 +1,5 @@
 when true:                    # not finished
-  import std/[json,os,tables,streams]
+  import std/[json,lenientops,os,tables,streams]
   import easings,tools,types
   const dt=0.008
   template time2B(x:JsonNode):float=
@@ -118,7 +118,7 @@ when true:                    # not finished
       s.write uint32.high
       var floorEvents:seq[(float32,float32,float32,float32)]
       var
-        floor:float32=0.0
+        floor:float64=0.0
         lt:float32=(-99999.9)
         ls:float32=10.0
       template addFloorEvent(t1,t2,f1,f2:float32)=
@@ -130,7 +130,7 @@ when true:                    # not finished
       for e in l["eventLayers"][0]["speedEvents"]:
         let lf=floor
         floor+=(e["startTimeS"].getFloat-lt)*ls
-        addFloorEvent(lt,e["startTimeS"].getFloat.float32,lf,floor)
+        addFloorEvent(lt,e["startTimeS"].getFloat.float32,lf.float32,floor.float32)
         if abs(e["start"].getFloat-e["end"].getFloat)<0.00001:
           let t1=float32(e["startTimeS"].getFloat)
           let t2=float32(e["endTimeS"].getFloat)
@@ -141,18 +141,25 @@ when true:                    # not finished
           lt=t2
           ls=e["end"].getFloat
         else:
-          for t in xrange(e["startTimeS"].getFloat,e["endTimeS"].getFloat-dt,dt):
+          var t=0.0
+          while t+e["startTimeS"].getFloat<e["endTimeS"].getFloat-dt:
             let
               t1=t
               t2=t+dt
               f1=float32(floor)
-            floor+=dt*(e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t+dt/2-e["startTimeS"].getFloat)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat))
-            addFloorEvent(t1,t2.float32,f1,floor.float32)
+            floor+=dt*(
+              e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t+dt/2)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat)
+              )
+            doAssert floor!=f1,$(dt*(
+              e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t+dt/2)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat)
+              ))
+            addFloorEvent((t1+e["startTimeS"].getFloat).float32,(t2+e["startTimeS"].getFloat).float32,f1,floor.float32)
+            t+=dt
           lt=e["endTimeS"].getFloat
           ls=e["end"].getFloat
       let lf=floor
       floor+=(j["songLength"].getFloat+9999.99-lt)*ls
-      addFloorEvent(lt,j["songLength"].getFloat.float32+9999.99'f32,lf,floor)
+      addFloorEvent(lt,j["songLength"].getFloat.float32+9999.99'f32,lf.float32,floor.float32)
       s.write uint32.high
       if "notes" in l:
         for e in l["notes"]:

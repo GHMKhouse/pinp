@@ -20,6 +20,11 @@ proc loadBin(s:Stream):Chart=
   while not s.atEnd:
     var l:JLine
     new l
+    l.xe=toTIter(newSeqOfCap[LEvent](1024))
+    l.ye=toTIter(newSeqOfCap[LEvent](1024))
+    l.re=toTIter(newSeqOfCap[LEvent](1024))
+    l.ae=toTIter(newSeqOfCap[LEvent](1024))
+    l.fe=toTIter(newSeqOfCap[LEvent](1024))
     while s.peekUInt32()!=uint32.high:
       l.xe.add readEvent(s)
     doAssert s.readUint32()==uint32.high

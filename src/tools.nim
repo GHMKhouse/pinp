@@ -18,5 +18,5 @@ proc `/`*(x:SomeInteger,y:SomeInteger):auto=int(x)/int(y)
 template optional*[T](x:T):Option[T]=
   try:
     some(x)
-  except CatchableError:
+  except IndexDefect,CatchableError:
     none(T)
