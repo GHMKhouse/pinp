@@ -58,8 +58,11 @@ proc loadOutro* =
     trcs["levelLabel"].put(target,
       playWidth.toFloat-32,scrnHeight.toFloat-32,0.0,0.6,0.6)
     trcs["scoreLabel"].put(target,playWidth.toFloat-32,32,0.0,0.8,0.8)
+    trcs["composerLabel"].setRGBA(255,255,255,progress)
     trcs["composerLabel"].put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-64,0.0,0.4,0.4)
+    trcs["charterLabel"].setRGBA(255,255,255,progress)
     trcs["charterLabel"].put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-96,0.0,0.4,0.4)
+    trcs["illustratorLabel"].setRGBA(255,255,255,progress)
     trcs["illustratorLabel"].put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-128,0.0,0.4,0.4)
     target.flip()
     delay(16)
@@ -122,5 +125,7 @@ proc loadChart* =
   clicks.clear()
   flicks.clear()
   touchs.clear()
+  jNotes.setLen(0)
+  hitFXs.setLen(0)
   combo=0
   loadOutro()

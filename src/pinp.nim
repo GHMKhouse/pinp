@@ -109,7 +109,7 @@ proc main=
       of mrQuit:
         state=0
       of mrRestart:
-        discard
+        state=1
     of 3:
       case over()
       of mrQuit:

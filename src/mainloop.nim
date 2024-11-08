@@ -85,10 +85,6 @@ proc mainLoop*:MainReturn=
       for n in l.n:
         if n.kind!=nkHold:
           n.update((x,y,h,r,a,s,ns,c,nc,f))
-    for id,c in clicks.pairs:
-      if c.x>0 and c.y>0 and c.x<tex[Tex.pause].w+32 and c.y<tex[Tex.pause].h+32:
-        discard fadeOutMusic(1000)
-        return mrQuit
     judge()
     renderHitFX()
     
@@ -114,3 +110,40 @@ proc mainLoop*:MainReturn=
     for id,touch in touchs.pairs:
       target.circleFilled(touch.x,touch.y,10,makeColor(0,255,0,255))
     target.flip()
+
+    for id,c in clicks.pairs:
+      if c.x>0 and c.y>0 and c.x<tex[Tex.pause].w+32 and c.y<tex[Tex.pause].h+32:
+        pauseMusic()
+        let pt=getMonoTime().ticks()
+        for i in 0..20:
+          target.rectangleFilled(0,0,scrnWidth/3,scrnHeight.float,makeColor(255,0,0,5))
+          target.rectangleFilled(scrnWidth/3,0,scrnWidth*2/3,scrnHeight.float,makeColor(255,255,0,5))
+          target.rectangleFilled(scrnWidth*2/3,0,scrnWidth.float,scrnHeight.float,makeColor(0,255,0,5))
+          target.flip()
+          delay(16)
+        block pausing:
+          while true:
+            template handleEventMenu(ev:Event)=
+              case ev.kind
+              of QUIT:system.quit()
+              of MOUSEBUTTONDOWN:
+                for i,m in maps.pairs():
+                  if ev.button.x<scrnWidth/3:
+                    return mrQuit
+                  elif ev.button.x<scrnWidth*2/3:
+                    return mrRestart
+                  else:
+                    let ct=getMonoTime().ticks()
+                    beginEpoch+=ct-pt
+                    rewindMusic()
+                    discard setMusicPosition((ct-beginEpoch)/1_000_000_000)
+                    resumeMusic()
+                    break pausing
+              else:discard
+            var ev:Event
+            ev=default(Event)
+            doSDL waitEventTimeout(ev.addr,16)
+            if ev!=default(Event):
+              handleEventMenu(ev)
+              while pollEvent(ev.addr)!=0:
+                handleEventMenu(ev)

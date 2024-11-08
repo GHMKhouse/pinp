@@ -4,6 +4,13 @@ var
   font16*, font32*, font64*: Font
 const
   white* = Color(r:255,g:255,b:255,a:255)
+  red* = Color(r:255,g:0,b:0,a:255)
+  yellow* = Color(r:255,g:255,b:0,a:255)
+  green* = Color(r:0,g:255,b:0,a:255)
+  cyan* = Color(r:0,g:255,b:255,a:255)
+  blue* = Color(r:0,g:0,b:255,a:255)
+  purple* = Color(r:255,g:0,b:255,a:255)
+
 type
   TIter*[T] = ref object
     i*:int
@@ -22,7 +29,7 @@ type
     n*:seq[Note]
   LEvent* = object
     t1*,t2*:float32   # in seconds
-    v1*,v2*:float32   # x,y:[-0.5,0.5],r:[-360,360],a:[0,1]
+    v1*,v2*:float64   # x,y:[-0.5,0.5],r:[-360,360],a:[0,1]
   NoteKind* = enum nkTap,nkDrag,nkHold,nkFlick
   Judge* = enum jUnjudged,jPerfect,jGood,jBad,jMiss,jHoldingPerfect,jHoldingGood
   Note* = ref object
@@ -34,7 +41,7 @@ type
     real*:bool        # flags[3]
     hl*:bool          # flags[4]
     kind*:NoteKind    # flags[0..1]
-    f1*,f2*:float32
+    f1*,f2*:float64
     judge*:Judge=jUnjudged
     lastHitFX*:int64
     lastHold*:int64
