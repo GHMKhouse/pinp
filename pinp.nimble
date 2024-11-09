@@ -13,6 +13,7 @@ binDir        = "bin"
 requires "nim >= 2.0.0"
 requires "sdl2_nim >= 2.0.0"
 requires "iniplus >= 0.3.0"
+requires "yaml >= 2.1.1"
 when defined(useopencv):
   requires "opencv >= 0.1.0"
 

@@ -1,4 +1,4 @@
-import std/[os,strutils,tables]
+import std/[monotimes,os,strutils,tables]
 import sdl2_nim/[sdl,sdl_gpu,sdl_mixer]
 import iniplus
 import globals,loadbin,offical2bin,options,renderutils,rpe2bin,tools,types
@@ -39,7 +39,7 @@ proc loadIntro* =
     trcs["illustratorLabel"].put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-128,0.0,0.4,0.4)
     target.flip()
     delay(16)
-proc loadOutro* =
+proc loadOutro*(dt:int64) =
   if loadingDelay==(-1):
     while true:
       var event:Event
@@ -65,9 +65,13 @@ proc loadOutro* =
     trcs["illustratorLabel"].setRGBA(255,255,255,progress)
     trcs["illustratorLabel"].put(target,scrnWidth.toFloat/2,scrnHeight.toFloat-128,0.0,0.4,0.4)
     target.flip()
-    delay(16)
+    delay(uint32(max(0,16-(dt div 1000000))))
   bg.setRGBA(255,255,255,128)
 proc loadChart* =
+  var st=getMonoTime().ticks()
+  for ch in freeingChunks:
+    freeChunk(ch)
+  freeingChunks.setLen(0)
   section initLevel:
     info=parseFile(crtMap.path/"info.ini")                     # Why .ini?
     illustInfo=info.getValue("META","illust").stringVal
@@ -111,8 +115,7 @@ proc loadChart* =
     if getOption("DEBUG","alwaysReload").intVal.bool or not fileExists(crtMap.path/"rawChart.bin"):
       var f=open(crtMap.path/chartInfo)
       defer:f.close()
-      var s:string=newString(256)
-      discard f.readChars(toOpenArray(s,0,255))
+      var s=f.readAll()
       if "\"formatVersion\":3" in s:
         tranOffical(crtMap.path/chartInfo)
       elif "\"RPEVersion\"" in s:
@@ -125,7 +128,8 @@ proc loadChart* =
   clicks.clear()
   flicks.clear()
   touchs.clear()
+  keyInputs.clear()
   jNotes.setLen(0)
   hitFXs.setLen(0)
   combo=0
-  loadOutro()
+  loadOutro(getMonoTime().ticks()-st)

@@ -2,8 +2,8 @@ import std/[math,monotimes]
 import sdl2_nim/[sdl,sdl_gpu,sdl_mixer]
 import globals,tools,types
 proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,float32,float32,float32,float32))=
-  let (x,y,h,r,_,s,ns,c,nc,f)=lineData
-  if autoPlay and n.kind!=nkHold and n.judge==jUnjudged and n.t2<=time:
+  let (x,y,h,r,a,s,ns,c,nc,f)=lineData
+  if autoPlay and n.kind!=nkHold and n.judge==jUnjudged and n.t2<=time and n.real:
     n.judge=(                         # who can make auto-play miss?
       if abs(time-n.t1)<0.08:jPerfect
       elif abs(time-n.t1)<0.16:jGood
@@ -22,13 +22,13 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
       n.judge
       )
     inc playResult[n.judge]
-  if n.t2<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
+  if n.t2<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged and n.real:
     n.judge=jMiss
     combo=0
     inc playResult[jMiss]
     return
-  elif n.t2<=time and n.judge in {jPerfect,jGood,jBad}:return
-  if n.kind==nkHold and n.t1<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged:
+  elif n.t2<=time and (n.judge in {jPerfect,jGood,jBad} or (not n.real)):return
+  if n.kind==nkHold and n.t1<time-0.16 and n.t2>time-0.5 and n.judge==jUnjudged and n.real:
     n.judge=jMiss
     combo=0
     inc playResult[jMiss]
@@ -44,7 +44,7 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
   n.r=degToRad(h)
   if (n.kind!=nkHold) and
     (nx>playWidth.float or ny>scrnHeight.float):return
-  if autoPlay and n.t2<=time:
+  if autoPlay and n.t2<=time and n.real:
     if n.judge==jHoldingPerfect or n.judge==jHoldingGood:
       n.judge=(if n.judge==jHoldingPerfect:jPerfect else:jGood)
       inc combo
@@ -68,7 +68,7 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
         n.judge
         )
       inc playResult[n.judge]
-  if n.kind==nkHold and autoPlay and n.t1<time:
+  if n.kind==nkHold and autoPlay and n.t1<time and n.real:
     if n.t2<time+0.24:
       if n.judge==jHoldingPerfect or n.judge==jHoldingGood:
         n.judge=(if n.judge==jHoldingPerfect:jPerfect else:jGood)
@@ -96,22 +96,24 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
         n.judge
         )
       n.lastHitFX=now
-  if (not autoPlay) and (n.judge notin {jPerfect,jGood,jBad,jMiss}) and n.t1-time<0.24 and (if n.kind==nkHold:time-n.t2<0.24 else:time-n.t1<0.16):
-    jNotes.add n
+  if (not autoPlay) and (n.judge notin {jPerfect,jGood,jBad,jMiss}) and
+    n.t1-time<0.24 and (if n.kind==nkHold:time-n.t2<0.24 else:time-n.t1<0.16) and n.real:
+      jNotes.add n
   #if n.t1>time+10:break
+  if a<0:return
   if n.kind==nkHold:
     var
       u,v:float32
     if chart.constSpeed:      # const-speed holds
       u=max(n.f1-f,0)+(n.f2-n.f1-n.speed*max(0,time-n.t1))
       v=n.f2-n.f1-n.speed*max(0,time-n.t1)
-      nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize*(if n.judge==jUnjudged:1 else:0)
-      ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize*(if n.judge==jUnjudged:1 else:0)
-      n.nx=nx+(x*globalScale+0.5)*playWidth.toFloat
-      n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
     else:
       u=(n.f2-f)*n.speed
-      v=n.f2-max(n.f1,f)
+      v=n.f2-max((if n.judge==jUnjudged:n.f1 else:0),f)*n.speed
+    nx=w*nc+max(n.f1-f,0)*side*s*100*globalScale*sizeFactor/noteSize*(if n.judge==jUnjudged:1 else:0)
+    ny=w*ns+max(n.f1-f,0)*side*c*100*globalScale*sizeFactor/noteSize*(if n.judge==jUnjudged:1 else:0)
+    n.nx=nx+(x*globalScale+0.5)*playWidth.toFloat
+    n.ny=(0.5-y*globalScale)*scrnHeight.toFloat-ny
     u*=sizeFactor/noteSize
     let
       nex=w*nc+u*side*s*100*globalScale
@@ -133,7 +135,7 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
         n.nx+head.h.float/12*sin(r)*side*globalScale*sizeFactor,
         n.ny-head.h.float/12*cos(r)*side*globalScale*sizeFactor,
         h+90-side*90,0.2*globalScale*sizeFactor,
-        max(0,v-0.1)*100/
+        max(0,v-0.05)*100/
           body.h.int.toFloat*globalScale*sizeFactor/noteSize)
     else:
       if n.judge==jMiss or n.judge==jBad:
@@ -146,9 +148,9 @@ proc update*(n:Note,lineData:(float32,float32,float32,float32,float32,float32,fl
         n.nx,
         n.ny,
         h+90-side*90,0.2*globalScale*sizeFactor,
-        max(0,v)*100/
+        max(0,v-0.05)*100/
           body.h.int.toFloat*globalScale*sizeFactor/noteSize)
-    if u>0:
+    if v>0:
       tail.blitTransform(nil,
       target,nex+(x*globalScale+0.5)*playWidth.toFloat,
       (0.5-y*globalScale)*scrnHeight.toFloat-ney,

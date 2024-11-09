@@ -8,6 +8,12 @@ proc judge* =
       if abs(result)<1:
         result=cmp(nk2order[x.kind],nk2order[y.kind])
     ),Ascending)
+  if keyInputs.len>0:
+    for n in jNotes:
+      if n.kind==nkDrag or n.kind==nkFlick:
+        if abs(time-n.t1)<0.16:
+          n.judge=jHoldingPerfect
+
   for id,click in clicks.mpairs:
     var
       bestJudged:Note=nil

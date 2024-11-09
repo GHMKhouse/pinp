@@ -17,7 +17,7 @@ proc getSongLength(j:JsonNode):float32=
       result=max(result,e["time"].getFloat/32/bps)
 proc tranOffical*(j:JsonNode,s:var FileStream)=
   s.write uint32(0)
-  s.write uint32(j["offset"].getFloat)
+  s.write float32(j["offset"].getFloat)
   s.write j.getSongLength()
   s.write uint32(1)
   template begin(name:string)=

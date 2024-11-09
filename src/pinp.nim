@@ -53,17 +53,17 @@ proc main=
     discard eventState(EventKind.SENSORUPDATE,IGNORE) # not a good idea
   section initRes:
     font16 = openFont("rsc/font.ttf".cstring, 16) # not DRY, waiting for fix
-    font16.setFontKerning(0)
-    font16.setFontOutline(0)
-    font32.setFontHinting(0)
+    font16.setFontKerning(1)
+    font16.setFontOutline(1)
+    font16.setFontHinting(1)
     font32 = openFont("rsc/font.ttf".cstring, 32)
-    font32.setFontKerning(0)
-    font32.setFontOutline(0)
-    font32.setFontHinting(0)
+    font32.setFontKerning(1)
+    font32.setFontOutline(1)
+    font32.setFontHinting(1)
     font64 = openFont("rsc/font.ttf".cstring, 64)
-    font32.setFontKerning(0)
-    font32.setFontOutline(0)
-    font32.setFontHinting(0)
+    font64.setFontKerning(1)
+    font64.setFontOutline(1)
+    font64.setFontHinting(1)
     hitSounds[nkFlick]=loadWAV("rsc/snd/HitSong2.ogg")
     for kind, path in os.walkDir("rsc/gui/"):
       if kind == pcFile:
@@ -86,9 +86,9 @@ proc main=
             tex[e] = loadImage(path.cstring)
             case e
             of Tex.line, tap, tapHL, drag, dragHL, flick, flickHL,
-                holdHead, holdHeadHL, holdTail, holdTailHL, hitFX:
+                holdHead, holdHeadHL, hitFX:
               tex[e].setAnchor(0.5, 0.5)
-            of holdBody, holdBodyHL:
+            of holdBody, holdBodyHL, holdTail, holdTailHL:
               tex[e].setAnchor(0.5, 1.0)
             else:discard
         except ValueError:

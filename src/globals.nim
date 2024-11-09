@@ -32,6 +32,7 @@ var
   clicks*:Table[TouchID,Touch]
   touchs*:Table[TouchID,Touch]
   flicks*:Table[TouchID,Touch]
+  keyInputs*:Table[TouchID,Touch]
   playResult*:array[Judge,int]
   jNotes*:seq[Note]
   gui*:Table[string,Image]

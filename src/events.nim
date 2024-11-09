@@ -23,6 +23,7 @@ proc handleEvent*(event:Event)=
         clicks[id]=Touch(time:time,x:tx,y:ty,noEarly:false)
         touchs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
         flicks[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
+        keyInputs[id]=Touch(time:time,x:tx,y:ty,parentClick:clicks[id].addr)
       return
     else:
       tx=event.tfinger.x
@@ -42,6 +43,7 @@ proc handleEvent*(event:Event)=
     else:
       id=event.tfinger.touchId
     touchs.del(id)
+    keyInputs.del(id)
   of FINGERMOTION,MOUSEMOTION:
     var
       tx,ty,dx,dy:cfloat

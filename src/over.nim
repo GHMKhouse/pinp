@@ -37,16 +37,16 @@ proc over*:MainReturn=
     doAssert waitEvent(event.addr)==1
     case event.kind
     of KEYDOWN:
-      discard fadeOutMusic(1000)
+      discard fadeOutChannel(0,500)
       return mrQuit
     of FINGERDOWN:
-      discard fadeOutMusic(1000)
+      discard fadeOutChannel(0,500)
       if event.tfinger.x<scrnWidth/2:
         return mrRestart
       else:
         return mrQuit
     of MOUSEBUTTONDOWN:
-      discard fadeOutMusic(1000)
+      discard fadeOutChannel(0,500)
       if event.button.x<scrnWidth/2:
         return mrRestart
       else:

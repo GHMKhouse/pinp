@@ -13,12 +13,12 @@ iterator xrange(a,b,s:float32):float32=
 proc B2S*(x:float,bpmList:seq[JsonNode]):float=
   var
     lastBPM=bpmList[0]
-  if bpmList.len==1:
+  if bpmList.len==1 or x<time2B(lastBPM["startTime"]):
     return (x/lastBPM["bpm"].getFloat*60)
   for bpm in bpmList.iterSlice(1..<bpmList.len):
     if time2B(bpm["startTime"])>x:
       result += ((x-time2B(lastbpm["startTime"]))/lastBPM["bpm"].getFloat*60)
-      break
+      return
     else:
       result += ((time2B(bpm["startTime"])-time2B(lastbpm["startTime"]))/lastBPM["bpm"].getFloat*60)
       lastBPM=bpm
@@ -29,6 +29,7 @@ proc getSongLength(j:JsonNode):float32=
       for n in l["notes"]:
         result=max(result,B2S(n["endTime"].time2B(),j["BPMList"].getElems()))
     for la in l["eventLayers"]:
+      if la.kind==JNull:continue
       for e in ["alphaEvents","moveXEvents","moveYEvents","rotateEvents"]:
         if e in la:
           result=max(result,B2S(la[e][^1]["endTime"].time2B(),j["BPMList"].getElems()))
@@ -48,6 +49,7 @@ proc calcL(events:seq[(float32,float32,float64,float64)],t:float32):float64=
 proc calc(layers:Layers,t:float32):float32=
   result=0.0
   for layer in layers.top.getElems:
+    if layer.kind==JNull:continue
     if layers.kind in layer:
       for i in layer[layers.kind&"I"].getInt..<layer[layers.kind].len:
         layer[layers.kind&"I"]=newJInt(i)
@@ -91,7 +93,7 @@ iterator tran(j:JsonNode,li:int,kind:string):(float32,float32,float32,float32)=
       lv=v
 proc tran*(j:JsonNode,s:var FileStream)=
   s.write uint32(0)
-  s.write uint32(j["META"]["offset"].getFloat/1000)
+  s.write float32(-j["META"]["offset"].getFloat/1000)
   s.write j.getSongLength()
   s.write uint32(0)
   template begin(name:string)=
@@ -194,6 +196,7 @@ proc doublize(j:JsonNode)=
   var c:CountTable[float]
   for i,l in j["judgeLineList"].getElems.pairs:
     for m,la in l["eventLayers"].getElems.pairs:
+      if la.kind==JNull:continue
       var ks:seq[string]
       for k,es in la.pairs:
         ks.add k

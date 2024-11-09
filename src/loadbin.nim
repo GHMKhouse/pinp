@@ -68,7 +68,8 @@ proc loadBin(s:Stream):Chart=
             doAssert s.readUint64()==0
             n.f1=s.readFloat64()
             n.f2=s.readFloat64()
-            inc result.numOfNotes
+            if n.real:
+              inc result.numOfNotes
           l.n.add n
       of "NEXTLINE":
         break

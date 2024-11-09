@@ -1,7 +1,8 @@
 import json,oids
-import sdl2_nim/[sdl,sdl_ttf,sdl_gpu]
+import sdl2_nim/[sdl,sdl_mixer,sdl_ttf,sdl_gpu]
 var
   font16*, font32*, font64*: Font
+  freeingChunks*:seq[Chunk]
 const
   white* = Color(r:255,g:255,b:255,a:255)
   red* = Color(r:255,g:0,b:0,a:255)
@@ -59,10 +60,13 @@ type
     surf*:Surface
     img*:Image
   TextRenderingCache* = ref TextRenderingCacheObj
-  MenuMap* = ref object
+  MenuMapObj* = object
     id*:Oid
-    title*,level*,composer*,charter*,illustrator*,path*:string
+    title*,level*,composer*,charter*,illustrator*,path*,bgPath*,sndPath*:string
     ttitle*,tlevel*,tcomposer*,tcharter*,tillustrator*:TextRenderingCache
+    bgImg*:Image
+    snd*:Chunk
+  MenuMap* = ref MenuMapObj
   MainReturn* = enum
     mrQuit
     mrRestart
@@ -72,6 +76,14 @@ proc `=destroy`*(trc:TextRenderingCacheObj)=
     freeImage(trc.img)
   if not trc.surf.isNil:
     freeSurface(trc.surf)
+proc `=destroy`*(m:MenuMapObj)=
+  `=destroy`(m.ttitle)
+  `=destroy`(m.tlevel)
+  `=destroy`(m.tcomposer)
+  `=destroy`(m.tcharter)
+  `=destroy`(m.tillustrator)
+  freeImage(m.bgImg)
+  freeingChunks.add(m.snd)
 proc newTextRenderingCache*(str:string,color:Color,anchorX:float32,anchorY:float32):TextRenderingCache=
   new result
   result.str=cstring(str)
@@ -108,7 +120,7 @@ proc toLayers*(t:JsonNode,k:string):Layers=
   new result
   result.top=t
   result.kind=k
-proc newMenuMap*(id:Oid;title,level,composer,charter,illustrator,path:string):MenuMap=
+proc newMenuMap*(id:Oid;title,level,composer,charter,illustrator,path,bg,snd:string):MenuMap=
   new result
   result.id=id
   result.title=title
@@ -122,3 +134,8 @@ proc newMenuMap*(id:Oid;title,level,composer,charter,illustrator,path:string):Me
   result.illustrator=illustrator
   result.tillustrator=newTextRenderingCache(illustrator,white,0.0,0.0)
   result.path=path
+  result.sndPath=snd
+  result.snd=loadWAV(snd.cstring)
+  result.bgPath=bg
+  result.bgImg=loadImage(bg.cstring)
+  result.bgImg.setAnchor(0.5,0.5)
