@@ -85,4 +85,4 @@ proc loadBin*(path:string):Chart=
   var b=f.readAll()
   var s=newStringStream(b)
   defer:s.close()
-  return loadBin(s)
+  result = loadBin(s)

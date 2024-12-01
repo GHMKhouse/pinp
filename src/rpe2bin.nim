@@ -1,7 +1,9 @@
 
-import std/[json,lenientops,os,tables,streams,strutils]
+import std/[json,lenientops,math,os,tables,streams,strutils]
 import easings,optimizer,tools,types
-const dt=0.016
+const
+  dt=0.016
+  epsilon=1e-6
 template time2B(x:JsonNode):float=
   x[0].num.float+x[1].num/x[2].num
 iterator iterSlice[T](x:seq[T],s:Slice[int]): T=
@@ -24,15 +26,18 @@ proc B2S*(x:float,bpmList:seq[JsonNode]):float=
       lastBPM=bpm
   return 
 proc getSongLength(j:JsonNode):float32=
-  for l in j["judgeLineList"]:
-    if "notes" in l:
-      for n in l["notes"]:
-        result=max(result,B2S(n["endTime"].time2B(),j["BPMList"].getElems()))
-    for la in l["eventLayers"]:
-      if la.kind==JNull:continue
-      for e in ["alphaEvents","moveXEvents","moveYEvents","rotateEvents"]:
-        if e in la:
-          result=max(result,B2S(la[e][^1]["endTime"].time2B(),j["BPMList"].getElems()))
+  if "duration" in j["META"]:
+    result=j["META"]["duration"].getFloat()
+  else:
+    for l in j["judgeLineList"]:
+      if "notes" in l:
+        for n in l["notes"]:
+          result=max(result,B2S(n["endTime"].time2B(),j["BPMList"].getElems()))
+      for la in l["eventLayers"]:
+        if la.kind==JNull:continue
+        for e in ["alphaEvents","moveXEvents","moveYEvents","rotateEvents"]:
+          if e in la:
+            result=max(result,B2S(la[e][^1]["endTime"].time2B(),j["BPMList"].getElems()))
   j["songLength"]=newJFloat(result)
 proc calcL(events:seq[(float32,float32,float64,float64)],t:float32):float64=
   var (_,_,_,lv)=events[0]
@@ -45,14 +50,34 @@ proc calcL(events:seq[(float32,float32,float64,float64)],t:float32):float64=
       result+=v1+(v2-v1)*(t-t1)/(t2-t1)
       break
     lv=v2
+proc nextT(layers:Layers,t:int32):int32=
+  result=int32.high
+  for layer in layers.top.getElems:
+    block cyc:
+      if layer.kind!=JObject:break cyc
+      if layers.kind in layer:
+        var i=layer[layers.kind&"I"].getInt
+        if i>=layer[layers.kind].elems.len:
+          break cyc
+        while t>=int(layer[layers.kind][i]["endTimeS"].getFloat*1000):
+          inc layer[layers.kind&"I"].num
+          inc i
+          if i>=layer[layers.kind].elems.len:
+            break cyc
+        if t<int(layer[layers.kind][i]["startTimeS"].getFloat*1000):
+          result=min(result,int(layer[layers.kind][i]["startTimeS"].getFloat*1000))
+        elif t<int(layer[layers.kind][i]["endTimeS"].getFloat*1000):
+          result=min(result,int(layer[layers.kind][i]["endTimeS"].getFloat*1000))
+        else:
+          raiseAssert "?"
 
 proc calc(layers:Layers,t:float32):float32=
   result=0.0
   for layer in layers.top.getElems:
     if layer.kind==JNull:continue
     if layers.kind in layer:
-      for i in layer[layers.kind&"I"].getInt..<layer[layers.kind].len:
-        layer[layers.kind&"I"]=newJInt(i)
+      for i in max(0,layer[layers.kind&"I"].getInt-10)..<layer[layers.kind].len:
+        layer[layers.kind&"I"].num=i
         let e=layer[layers.kind][i]
         let
           t1=e["startTimeS"].getFloat
@@ -72,23 +97,30 @@ proc calc(layers:Layers,t:float32):float32=
 iterator tran(j:JsonNode,li:int,kind:string):(float32,float32,float32,float32)=
   var l=j["judgeLineList"][li]
   var
-    lt:float32=(l["eventLayers"][0][kind][0]["startTimeS"].getFloat)
-    lv:float32=calc(l["eventLayers"].toLayers(kind),lt)
+    la=l["eventLayers"].toLayers(kind)
+    lt:int32=int32(l["eventLayers"][0][kind][0]["startTimeS"].getFloat*1000)
+    lv:float32=calc(la,lt/1000)
   l["eventLayers"][0][kind&"I"]=newJInt(0)
-  yield (-99999.99'f32,lt,lv,lv)
+  yield (-99999.99'f32,lt/1000,lv,lv)
   if l["father"].getInt==(-1):
-    for t in xrange(0,j["songLength"].getFloat,dt):
-      var
-        i=l["eventLayers"][0][kind&"I"].getInt()
-        v=calc(l["eventLayers"].toLayers(kind),t)
-        j=l["eventLayers"][0][kind&"I"].getInt()
-      if abs(v-lv)>0.000001:
-        if i==j and 
-          l["eventLayers"][0][kind][i]["startTimeS"].getFloat()<=t-dt and
-          t<=l["eventLayers"][0][kind][i]["endTimeS"].getFloat():
-            yield (lt,t,lv,v)
-        else:
-          yield (lt,t,v,v)
+    var t:int32=lt
+    while true:
+      t=nextT(la,t)
+      if t==int32.high:break
+      let
+        v=calc(la,t/1000)
+      if abs(v-lv)<=0.1 or abs(t-lt)<=16:
+        yield (lt/1000,t/1000,lv,v)
+      else:
+        for ttt in (lt shr 4)..(t shr 4):
+          let tt=ttt shl 4
+          var
+            tv=calc(la,tt/1000)
+          if tt>lt:
+            yield (lt/1000,tt/1000,lv,tv)
+            lt=tt
+            lv=tv
+        yield (lt/1000,t/1000,lv,v)
       lt=t
       lv=v
 proc tran*(j:JsonNode,s:var FileStream)=
@@ -99,6 +131,7 @@ proc tran*(j:JsonNode,s:var FileStream)=
   template begin(name:string)=
     s.write uint32.high
     s.write name.alignLeft(12)
+    # echo name
   for i,l in j["judgeLineList"].getElems.pairs:
     begin("MOVEX")
     for e in tran(j,i,"moveXEvents"):
@@ -161,14 +194,14 @@ proc tran*(j:JsonNode,s:var FileStream)=
             t1=t
             t2=t+dt
             f1=(floor)
-          floor+=dt/4*(
+          floor+=dt*(
             e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t+dt/2)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat)
             )
-          doAssert floor!=f1,$(dt/4*(
+          doAssert floor!=f1,$(dt*(
             e["start"].getFloat+(e["end"].getFloat-e["start"].getFloat)*(t+dt/2)/(e["endTimeS"].getFloat-e["startTimeS"].getFloat)
             ))
           addFloorEvent((t1+e["startTimeS"].getFloat).float32,(t2+e["startTimeS"].getFloat).float32,f1,floor)
-          t+=dt/4
+          t+=dt
         lt=e["endTimeS"].getFloat
         ls=e["end"].getFloat
     let lf=floor

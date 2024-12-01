@@ -1,8 +1,5 @@
-import std/[oids,os,streams]
-import iniplus,yaml
-type
-  RPEInfo = ref object
-    Name,Path,Song,Picture,Chart,Level,Composer,Charter:string
+import std/[json,oids,os,streams]
+import iniplus,yaml/tojson,zip/zipfiles
 proc importMap*(path:string)=
   if dirExists(path):
     let
@@ -17,28 +14,35 @@ proc importMap*(path:string)=
         of ".png",".jpg",".mp3",".ogg",".json","",".ini":
           copyFile(p,d/(n&x))
         of ".txt":
-          var info:RPEInfo
-          new info
           var f=open(p,fmRead)
           defer:f.close()
           var s=newFileStream(f)
           defer:s.close()
-          yaml.load(s,info)
+          var j=loadToJson(s)[0]
           var ini:ConfigTable
-          ini.setKey("META","name",info.Name)
-          ini.setKey("META","music",info.Song)
-          ini.setKey("META","illust",info.Picture)
-          ini.setKey("META","originalChart",info.Chart)
-          ini.setKey("META","level",info.Level)
-          ini.setKey("META","composer",info.Composer)
-          ini.setKey("META","charter",info.Charter)
+          ini.setKey("META","name",j["Name"].getStr("UK"))
+          ini.setKey("META","music",j["Song"].getStr("UK"))
+          ini.setKey("META","illust",j["Picture"].getStr("UK"))
+          ini.setKey("META","originalChart",j["Chart"].getStr("UK"))
+          ini.setKey("META","level",j["Level"].getStr("UK"))
+          ini.setKey("META","composer",j["Composer"].getStr("UK"))
+          ini.setKey("META","charter",j["Charter"].getStr("UK"))
           ini.setKey("META","illustrator","UK")
           var a=ini.toString()
           var f2=open(d/"info.ini",fmWrite)
           defer:f2.close()
           f2.write(a)
   elif fileExists(path):
-    discard
+    var z:ZipArchive
+    if not z.open(path):
+      echo "Unable to open zip file "&path&", exiting."
+      quit(QuitFailure)
+    let
+      t=getTempDir()/"pinp"/"importTemp"
+    z.extractAll(t)
+    importMap(t)
 when isMainModule:
-  setCurrentDir("D:/czm/pinp/")
-  importMap("D:/download/φ҈͢͡ .15")
+  setCurrentDir(getAppDir().parentDir())
+  let args=commandLineParams()
+  for a in args:
+    importMap(a)
